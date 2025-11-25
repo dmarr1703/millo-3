@@ -1,0 +1,17 @@
+{
+  "name": "millo-marketplace",
+  "version": "1.0.0",
+  "description": "E-Commerce Marketplace Platform",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": ["ecommerce", "marketplace", "shopping"],
+  "author": "millo",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5"
+  }
+}
