@@ -142,7 +142,6 @@ async function processOrders(customerName, customerEmail, shippingAddress) {
         const sellerAmount = subtotal * 0.85; // 85% for seller
         
         const order = {
-            id: 'order-' + Date.now() + '-' + Math.random().toString(36).substr(2, 9),
             customer_email: customerEmail,
             customer_name: customerName,
             product_id: item.product.id,
@@ -155,29 +154,17 @@ async function processOrders(customerName, customerEmail, shippingAddress) {
             commission: commission,
             seller_amount: sellerAmount,
             status: 'pending',
-            shipping_address: shippingAddress,
-            created_at: new Date().toISOString()
+            shipping_address: shippingAddress
         };
         
-        const response = await fetch('tables/orders', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(order)
-        });
-        
-        if (!response.ok) {
-            throw new Error('Failed to create order');
-        }
+        // Save order to localStorage database
+        const createdOrder = MilloDB.create('orders', order);
         
         // Update product stock
         const updatedStock = item.product.stock - item.quantity;
-        await fetch(`tables/products/${item.product.id}`, {
-            method: 'PATCH',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ stock: updatedStock })
-        });
+        MilloDB.update('products', item.product.id, { stock: updatedStock });
         
-        return response.json();
+        return createdOrder;
     });
     
     await Promise.all(orderPromises);

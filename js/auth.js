@@ -86,12 +86,11 @@ async function handleAuth(event) {
 // Login function
 async function login(email, password) {
     try {
-        // Fetch users from API
-        const response = await fetch('tables/users?limit=1000');
-        const data = await response.json();
+        // Get users from localStorage database
+        const users = MilloDB.getAll('users');
         
         // Find user with matching credentials
-        const user = data.data.find(u => u.email === email && u.password === password);
+        const user = users.find(u => u.email === email && u.password === password);
         
         if (user) {
             if (user.status === 'suspended') {
@@ -126,10 +125,7 @@ async function login(email, password) {
 async function signup(email, password, fullName, role) {
     try {
         // Check if email already exists
-        const response = await fetch('tables/users?limit=1000');
-        const data = await response.json();
-        
-        const existingUser = data.data.find(u => u.email === email);
+        const existingUser = MilloDB.findOne('users', { email: email });
         if (existingUser) {
             alert('Email already exists. Please use a different email or login.');
             return;
@@ -137,36 +133,26 @@ async function signup(email, password, fullName, role) {
         
         // Create new user
         const newUser = {
-            id: 'user-' + Date.now(),
             email: email,
             password: password,
             full_name: fullName,
             role: role,
-            created_at: new Date().toISOString(),
             status: 'active'
         };
         
-        const createResponse = await fetch('tables/users', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(newUser)
-        });
+        // Save to localStorage database
+        const createdUser = MilloDB.create('users', newUser);
         
-        if (createResponse.ok) {
-            const createdUser = await createResponse.json();
-            currentUser = createdUser;
-            localStorage.setItem('milloUser', JSON.stringify(createdUser));
-            updateUIForLoggedInUser();
-            closeAuthModal();
-            
-            showNotification('Account created successfully!', 'success');
-            
-            // Redirect based on role
-            if (role === 'seller') {
-                setTimeout(() => window.location.href = 'dashboard.html', 1000);
-            }
-        } else {
-            alert('Signup failed. Please try again.');
+        currentUser = createdUser;
+        localStorage.setItem('milloUser', JSON.stringify(createdUser));
+        updateUIForLoggedInUser();
+        closeAuthModal();
+        
+        showNotification('Account created successfully!', 'success');
+        
+        // Redirect based on role
+        if (role === 'seller') {
+            setTimeout(() => window.location.href = 'dashboard.html', 1000);
         }
     } catch (error) {
         console.error('Signup error:', error);

@@ -36,25 +36,22 @@ async function loadDashboardData() {
 
 // Load seller products
 async function loadSellerProducts() {
-    const response = await fetch('tables/products?limit=1000');
-    const data = await response.json();
-    sellerProducts = data.data.filter(p => p.seller_id === seller.id);
+    const products = MilloDB.getAll('products');
+    sellerProducts = products.filter(p => p.seller_id === seller.id);
     displayProducts();
 }
 
 // Load seller orders
 async function loadSellerOrders() {
-    const response = await fetch('tables/orders?limit=1000');
-    const data = await response.json();
-    sellerOrders = data.data.filter(o => o.seller_id === seller.id);
+    const orders = MilloDB.getAll('orders');
+    sellerOrders = orders.filter(o => o.seller_id === seller.id);
     displayOrders();
 }
 
 // Load seller subscriptions
 async function loadSellerSubscriptions() {
-    const response = await fetch('tables/subscriptions?limit=1000');
-    const data = await response.json();
-    sellerSubscriptions = data.data.filter(s => s.seller_id === seller.id);
+    const subscriptions = MilloDB.getAll('subscriptions');
+    sellerSubscriptions = subscriptions.filter(s => s.seller_id === seller.id);
     displaySubscriptions();
 }
 
@@ -358,13 +355,8 @@ async function handleAddProduct(event) {
             created_at: new Date().toISOString()
         };
         
-        const productResponse = await fetch('tables/products', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(newProduct)
-        });
-        
-        if (!productResponse.ok) throw new Error('Failed to create product');
+        // Save product to localStorage database
+        MilloDB.create('products', newProduct);
         
         // Create subscription
         const nextBillingDate = new Date();
@@ -381,13 +373,8 @@ async function handleAddProduct(event) {
             created_at: new Date().toISOString()
         };
         
-        const subResponse = await fetch('tables/subscriptions', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(newSubscription)
-        });
-        
-        if (!subResponse.ok) throw new Error('Failed to create subscription');
+        // Save subscription to localStorage database
+        MilloDB.create('subscriptions', newSubscription);
         
         showNotification('Product added successfully!', 'success');
         closeAddProductModal();
@@ -407,16 +394,10 @@ async function toggleProductStatus(productId) {
     const newStatus = product.status === 'active' ? 'inactive' : 'active';
     
     try {
-        const response = await fetch(`tables/products/${productId}`, {
-            method: 'PATCH',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ status: newStatus })
-        });
-        
-        if (response.ok) {
-            showNotification('Product status updated', 'success');
-            await loadSellerProducts();
-        }
+        // Update product status in localStorage database
+        MilloDB.update('products', productId, { status: newStatus });
+        showNotification('Product status updated', 'success');
+        await loadSellerProducts();
     } catch (error) {
         console.error('Error updating product:', error);
     }
@@ -429,16 +410,13 @@ async function deleteProduct(productId) {
     }
     
     try {
-        await fetch(`tables/products/${productId}`, { method: 'DELETE' });
+        // Delete product from localStorage database
+        MilloDB.delete('products', productId);
         
         // Cancel associated subscription
         const subscription = sellerSubscriptions.find(s => s.product_id === productId);
         if (subscription) {
-            await fetch(`tables/subscriptions/${subscription.id}`, {
-                method: 'PATCH',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ status: 'cancelled' })
-            });
+            MilloDB.update('subscriptions', subscription.id, { status: 'cancelled' });
         }
         
         showNotification('Product deleted', 'success');
@@ -461,17 +439,11 @@ async function updateOrderStatus(orderId) {
     const newStatus = statuses[Math.min(currentIndex + 1, statuses.length - 1)];
     
     try {
-        const response = await fetch(`tables/orders/${orderId}`, {
-            method: 'PATCH',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ status: newStatus })
-        });
-        
-        if (response.ok) {
-            showNotification('Order status updated', 'success');
-            await loadSellerOrders();
-            displayRecentOrders();
-        }
+        // Update order status in localStorage database
+        MilloDB.update('orders', orderId, { status: newStatus });
+        showNotification('Order status updated', 'success');
+        await loadSellerOrders();
+        displayRecentOrders();
     } catch (error) {
         console.error('Error updating order:', error);
     }
@@ -486,19 +458,14 @@ async function cancelSubscription(subscriptionId) {
     try {
         const subscription = sellerSubscriptions.find(s => s.id === subscriptionId);
         
-        // Cancel subscription
-        await fetch(`tables/subscriptions/${subscriptionId}`, {
-            method: 'PATCH',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ status: 'cancelled' })
-        });
+        // Cancel subscription in localStorage database
+        MilloDB.update('subscriptions', subscriptionId, { status: 'cancelled' });
         
         // Deactivate product
         if (subscription) {
-            await fetch(`tables/products/${subscription.product_id}`, {
-                method: 'PATCH',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ subscription_status: 'expired', status: 'inactive' })
+            MilloDB.update('products', subscription.product_id, { 
+                subscription_status: 'expired', 
+                status: 'inactive' 
             });
         }
         

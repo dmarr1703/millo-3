@@ -34,34 +34,26 @@ async function loadAdminData() {
 
 // Load all users
 async function loadUsers() {
-    const response = await fetch('tables/users?limit=1000');
-    const data = await response.json();
-    allUsers = data.data;
+    allUsers = MilloDB.getAll('users');
     displayUsers();
 }
 
 // Load all products
 async function loadProducts() {
-    const response = await fetch('tables/products?limit=1000');
-    const data = await response.json();
-    allProducts = data.data;
+    allProducts = MilloDB.getAll('products');
     displayAllProducts();
 }
 
 // Load all orders
 async function loadOrders() {
-    const response = await fetch('tables/orders?limit=1000');
-    const data = await response.json();
-    allOrders = data.data;
+    allOrders = MilloDB.getAll('orders');
     displayAllOrders();
     displayCommissions();
 }
 
 // Load all subscriptions
 async function loadSubscriptions() {
-    const response = await fetch('tables/subscriptions?limit=1000');
-    const data = await response.json();
-    allSubscriptions = data.data;
+    allSubscriptions = MilloDB.getAll('subscriptions');
 }
 
 // Update analytics
@@ -360,16 +352,10 @@ async function toggleUserStatus(userId) {
     const newStatus = user.status === 'active' ? 'suspended' : 'active';
     
     try {
-        const response = await fetch(`tables/users/${userId}`, {
-            method: 'PATCH',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({ status: newStatus })
-        });
-        
-        if (response.ok) {
-            showNotification(`User ${newStatus}`, 'success');
-            await loadUsers();
-        }
+        // Update user status in localStorage database
+        MilloDB.update('users', userId, { status: newStatus });
+        showNotification(`User ${newStatus}`, 'success');
+        await loadUsers();
     } catch (error) {
         console.error('Error updating user:', error);
         alert('Failed to update user status');
@@ -383,7 +369,8 @@ async function deleteUser(userId) {
     }
     
     try {
-        await fetch(`tables/users/${userId}`, { method: 'DELETE' });
+        // Delete user from localStorage database
+        MilloDB.delete('users', userId);
         showNotification('User deleted', 'success');
         await loadUsers();
     } catch (error) {
@@ -399,7 +386,8 @@ async function deleteProductAsAdmin(productId) {
     }
     
     try {
-        await fetch(`tables/products/${productId}`, { method: 'DELETE' });
+        // Delete product from localStorage database
+        MilloDB.delete('products', productId);
         showNotification('Product deleted', 'success');
         await loadProducts();
         await updateAnalytics();

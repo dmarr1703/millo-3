@@ -8,14 +8,14 @@ document.addEventListener('DOMContentLoaded', function() {
     setupFilters();
 });
 
-// Load products from API
+// Load products from localStorage database
 async function loadProducts() {
     try {
-        const response = await fetch('tables/products?limit=1000');
-        const data = await response.json();
+        // Get products from localStorage database
+        const products = MilloDB.getAll('products');
         
         // Filter only active products with active subscriptions
-        allProducts = data.data.filter(p => p.status === 'active' && p.subscription_status === 'active');
+        allProducts = products.filter(p => p.status === 'active' && p.subscription_status === 'active');
         filteredProducts = [...allProducts];
         
         displayProducts();
