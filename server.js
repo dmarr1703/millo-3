@@ -2,12 +2,21 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+require('dotenv').config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT || 3000;
+
+// Initialize Stripe with secret key
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 // Middleware
 app.use(cors());
+
+// Stripe webhook needs raw body
+app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
+
+// JSON middleware for all other routes
 app.use(express.json());
 app.use(express.static('.')); // Serve static files from current directory
 
@@ -261,6 +270,286 @@ app.get('/api/owner-earnings', (req, res) => {
         total_withdrawals: totalWithdrawals,
         available_balance: totalCommissions + totalSubscriptions - totalWithdrawals
     });
+});
+
+// ====================================
+// STRIPE PAYMENT ENDPOINTS
+// ====================================
+
+// Get Stripe publishable key
+app.get('/api/stripe/config', (req, res) => {
+    res.json({
+        publishableKey: process.env.STRIPE_PUBLISHABLE_KEY
+    });
+});
+
+// Create Payment Intent for checkout
+app.post('/api/stripe/create-payment-intent', async (req, res) => {
+    try {
+        const { amount, currency = 'cad', metadata = {} } = req.body;
+
+        if (!amount || amount <= 0) {
+            return res.status(400).json({ error: 'Invalid amount' });
+        }
+
+        // Create a PaymentIntent with the order amount and currency
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: Math.round(amount * 100), // Convert to cents
+            currency: currency,
+            automatic_payment_methods: {
+                enabled: true,
+            },
+            metadata: metadata
+        });
+
+        res.json({
+            clientSecret: paymentIntent.client_secret,
+            paymentIntentId: paymentIntent.id
+        });
+    } catch (error) {
+        console.error('Error creating payment intent:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Create subscription for product listing fee
+app.post('/api/stripe/create-subscription', async (req, res) => {
+    try {
+        const { seller_id, seller_email, product_id, product_name } = req.body;
+
+        if (!seller_email) {
+            return res.status(400).json({ error: 'Seller email is required' });
+        }
+
+        // Find or create Stripe customer
+        let customer;
+        const existingCustomers = await stripe.customers.list({
+            email: seller_email,
+            limit: 1
+        });
+
+        if (existingCustomers.data.length > 0) {
+            customer = existingCustomers.data[0];
+        } else {
+            customer = await stripe.customers.create({
+                email: seller_email,
+                metadata: {
+                    seller_id: seller_id
+                }
+            });
+        }
+
+        // Create a price for the listing fee (if not exists)
+        const listingFeeAmount = parseInt(process.env.LISTING_FEE_AMOUNT) || 2500; // $25 in cents
+        const listingFeeCurrency = process.env.LISTING_FEE_CURRENCY || 'cad';
+
+        // For simplicity, create a new price each time
+        // In production, you should reuse existing prices
+        const price = await stripe.prices.create({
+            unit_amount: listingFeeAmount,
+            currency: listingFeeCurrency,
+            recurring: {
+                interval: 'month',
+            },
+            product_data: {
+                name: 'Product Listing Fee',
+                description: `Monthly fee for listing: ${product_name || 'Product'}`,
+            },
+            metadata: {
+                product_id: product_id,
+                seller_id: seller_id
+            }
+        });
+
+        // Create subscription
+        const subscription = await stripe.subscriptions.create({
+            customer: customer.id,
+            items: [{ price: price.id }],
+            metadata: {
+                seller_id: seller_id,
+                product_id: product_id,
+                product_name: product_name
+            }
+        });
+
+        // Save subscription to database
+        const subscriptionRecord = {
+            id: generateId('subscription'),
+            stripe_subscription_id: subscription.id,
+            stripe_customer_id: customer.id,
+            seller_id: seller_id,
+            product_id: product_id,
+            product_name: product_name,
+            amount: listingFeeAmount / 100, // Convert to dollars
+            currency: listingFeeCurrency,
+            status: subscription.status,
+            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+            created_at: new Date().toISOString()
+        };
+
+        db.subscriptions.push(subscriptionRecord);
+        saveDatabase();
+
+        res.json({
+            subscription: subscriptionRecord,
+            stripe_subscription: subscription
+        });
+    } catch (error) {
+        console.error('Error creating subscription:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Cancel subscription
+app.post('/api/stripe/cancel-subscription', async (req, res) => {
+    try {
+        const { subscription_id } = req.body;
+
+        if (!subscription_id) {
+            return res.status(400).json({ error: 'Subscription ID is required' });
+        }
+
+        // Find subscription in database
+        const subscription = db.subscriptions.find(s => s.id === subscription_id);
+        if (!subscription) {
+            return res.status(404).json({ error: 'Subscription not found' });
+        }
+
+        // Cancel in Stripe
+        const canceledSubscription = await stripe.subscriptions.cancel(
+            subscription.stripe_subscription_id
+        );
+
+        // Update in database
+        const index = db.subscriptions.findIndex(s => s.id === subscription_id);
+        db.subscriptions[index].status = 'canceled';
+        db.subscriptions[index].canceled_at = new Date().toISOString();
+        saveDatabase();
+
+        res.json({
+            subscription: db.subscriptions[index],
+            stripe_subscription: canceledSubscription
+        });
+    } catch (error) {
+        console.error('Error canceling subscription:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Stripe Webhook Handler
+app.post('/api/stripe/webhook', async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+
+    let event;
+
+    try {
+        // Verify webhook signature
+        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err) {
+        console.error('Webhook signature verification failed:', err.message);
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    // Handle the event
+    console.log(`Received event: ${event.type}`);
+
+    try {
+        switch (event.type) {
+            case 'payment_intent.succeeded':
+                const paymentIntent = event.data.object;
+                console.log('PaymentIntent succeeded:', paymentIntent.id);
+                // Payment successful - order should already be created
+                break;
+
+            case 'payment_intent.payment_failed':
+                const failedPayment = event.data.object;
+                console.log('PaymentIntent failed:', failedPayment.id);
+                // Handle failed payment
+                break;
+
+            case 'invoice.payment_succeeded':
+                const invoice = event.data.object;
+                console.log('Invoice payment succeeded:', invoice.id);
+                // Update subscription status if needed
+                const subscription = db.subscriptions.find(
+                    s => s.stripe_subscription_id === invoice.subscription
+                );
+                if (subscription) {
+                    const index = db.subscriptions.findIndex(
+                        s => s.id === subscription.id
+                    );
+                    db.subscriptions[index].status = 'active';
+                    db.subscriptions[index].last_payment = new Date().toISOString();
+                    saveDatabase();
+                }
+                break;
+
+            case 'invoice.payment_failed':
+                const failedInvoice = event.data.object;
+                console.log('Invoice payment failed:', failedInvoice.id);
+                // Handle failed subscription payment
+                const failedSubscription = db.subscriptions.find(
+                    s => s.stripe_subscription_id === failedInvoice.subscription
+                );
+                if (failedSubscription) {
+                    const index = db.subscriptions.findIndex(
+                        s => s.id === failedSubscription.id
+                    );
+                    db.subscriptions[index].status = 'past_due';
+                    saveDatabase();
+                }
+                break;
+
+            case 'customer.subscription.deleted':
+                const deletedSubscription = event.data.object;
+                console.log('Subscription deleted:', deletedSubscription.id);
+                // Update subscription status
+                const deletedSub = db.subscriptions.find(
+                    s => s.stripe_subscription_id === deletedSubscription.id
+                );
+                if (deletedSub) {
+                    const index = db.subscriptions.findIndex(
+                        s => s.id === deletedSub.id
+                    );
+                    db.subscriptions[index].status = 'canceled';
+                    db.subscriptions[index].canceled_at = new Date().toISOString();
+                    saveDatabase();
+                }
+                break;
+
+            case 'customer.subscription.updated':
+                const updatedSubscription = event.data.object;
+                console.log('Subscription updated:', updatedSubscription.id);
+                // Update subscription details
+                const updatedSub = db.subscriptions.find(
+                    s => s.stripe_subscription_id === updatedSubscription.id
+                );
+                if (updatedSub) {
+                    const index = db.subscriptions.findIndex(
+                        s => s.id === updatedSub.id
+                    );
+                    db.subscriptions[index].status = updatedSubscription.status;
+                    db.subscriptions[index].current_period_start = new Date(
+                        updatedSubscription.current_period_start * 1000
+                    ).toISOString();
+                    db.subscriptions[index].current_period_end = new Date(
+                        updatedSubscription.current_period_end * 1000
+                    ).toISOString();
+                    saveDatabase();
+                }
+                break;
+
+            default:
+                console.log(`Unhandled event type: ${event.type}`);
+        }
+
+        res.json({ received: true });
+    } catch (error) {
+        console.error('Error handling webhook:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // Database backup endpoint

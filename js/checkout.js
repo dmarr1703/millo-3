@@ -107,31 +107,73 @@ async function handleCheckout(event) {
         
         const shippingAddress = `${address}, ${city}, ${province} ${postalCode}`;
         
-        // Create payment method with Stripe
-        const {paymentMethod, error} = await stripe.createPaymentMethod({
-            type: 'card',
-            card: cardElement,
-            billing_details: {
-                name: customerName,
-                email: customerEmail
+        // Calculate total with tax
+        const subtotal = getCartTotal();
+        const tax = subtotal * 0.13; // 13% HST for Canada
+        const total = subtotal + tax;
+        
+        // Create Payment Intent on backend
+        const paymentIntentResponse = await fetch('http://localhost:3000/api/stripe/create-payment-intent', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                amount: total,
+                currency: 'cad',
+                metadata: {
+                    customer_name: customerName,
+                    customer_email: customerEmail,
+                    shipping_address: shippingAddress,
+                    order_count: cart.length
+                }
+            })
+        });
+        
+        if (!paymentIntentResponse.ok) {
+            const errorData = await paymentIntentResponse.json();
+            throw new Error(errorData.error || 'Failed to create payment intent');
+        }
+        
+        const { clientSecret } = await paymentIntentResponse.json();
+        
+        // Confirm payment with Stripe
+        const { error: stripeError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+            payment_method: {
+                card: cardElement,
+                billing_details: {
+                    name: customerName,
+                    email: customerEmail,
+                    address: {
+                        line1: address,
+                        city: city,
+                        state: province,
+                        postal_code: postalCode,
+                        country: 'CA'
+                    }
+                }
             }
         });
         
-        if (error) {
-            throw new Error(error.message);
+        if (stripeError) {
+            throw new Error(stripeError.message);
         }
         
-        // Process orders
-        await processOrders(customerName, customerEmail, shippingAddress);
-        
-        // Clear cart
-        clearCart();
-        
-        // Show success and redirect
-        showNotification('Order placed successfully!', 'success');
-        setTimeout(() => {
-            window.location.href = 'order-success.html';
-        }, 1500);
+        if (paymentIntent.status === 'succeeded') {
+            // Process orders
+            await processOrders(customerName, customerEmail, shippingAddress, paymentIntent.id);
+            
+            // Clear cart
+            clearCart();
+            
+            // Show success and redirect
+            showNotification('Order placed successfully!', 'success');
+            setTimeout(() => {
+                window.location.href = 'order-success.html';
+            }, 1500);
+        } else {
+            throw new Error('Payment was not successful');
+        }
         
     } catch (error) {
         console.error('Checkout error:', error);
@@ -143,7 +185,7 @@ async function handleCheckout(event) {
 }
 
 // Process orders
-async function processOrders(customerName, customerEmail, shippingAddress) {
+async function processOrders(customerName, customerEmail, shippingAddress, paymentIntentId) {
     const orderPromises = cart.map(async item => {
         const subtotal = item.product.price * item.quantity;
         const commission = subtotal * 0.15; // 15% commission
@@ -162,7 +204,9 @@ async function processOrders(customerName, customerEmail, shippingAddress) {
             commission: commission,
             seller_amount: sellerAmount,
             status: 'pending',
-            shipping_address: shippingAddress
+            shipping_address: shippingAddress,
+            payment_intent_id: paymentIntentId,
+            payment_status: 'paid'
         };
         
         // Save order to localStorage database
