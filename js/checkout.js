@@ -13,9 +13,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize Stripe
     // IMPORTANT: Replace with your actual Stripe publishable key from dashboard.stripe.com
     // Get your key at: https://dashboard.stripe.com/apikeys
-    // This is a placeholder - you MUST replace it with your real Stripe key
+    // This is a LIVE key - real payments will be processed
     try {
-        stripe = Stripe('pk_test_REPLACE_WITH_YOUR_STRIPE_PUBLISHABLE_KEY');
+        stripe = Stripe('pk_live_51Ndm3QRwc1RkBb2PSIWPn92BbDYkt33NLCly9ZDbrgtlyy57gzC8Q3K0ttC4D95MQOQA95fPPA03D9qGIXpGGkzH00Ih1IrhdK');
     } catch (error) {
         console.error('Stripe initialization failed:', error);
         alert('Payment system not configured. Please add your Stripe publishable key in js/checkout.js');
