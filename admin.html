@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard - millo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: 'Poppins', sans-serif;
+        }
+        .gradient-bg {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        .stat-card {
+            transition: transform 0.3s ease;
+        }
+        .stat-card:hover {
+            transform: translateY(-5px);
+        }
+    </style>
+</head>
+<body class="bg-gray-50">
+    <!-- Navigation -->
+    <nav class="gradient-bg text-white shadow-md">
+        <div class="container mx-auto px-4 py-4">
+            <div class="flex justify-between items-center">
+                <div>
+                    <h1 class="text-3xl font-bold">millo Admin</h1>
+                    <p class="text-sm opacity-90">Owner Dashboard</p>
+                </div>
+                <div class="flex items-center space-x-4">
+                    <a href="index.html" class="text-white hover:text-gray-200 transition">
+                        <i class="fas fa-home mr-2"></i>Home
+                    </a>
+                    <button onclick="logout()" class="px-4 py-2 bg-white bg-opacity-20 hover:bg-opacity-30 rounded-lg transition">
+                        <i class="fas fa-sign-out-alt mr-2"></i>Logout
+                    </button>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Dashboard Container -->
+    <div class="container mx-auto px-4 py-8">
+        <!-- Welcome Section -->
+        <div class="mb-8">
+            <h2 class="text-3xl font-bold text-gray-800 mb-2">Welcome, Owner!</h2>
+            <p class="text-gray-600">Manage your marketplace and track commissions</p>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="mb-6 border-b">
+            <div class="flex space-x-6">
+                <button onclick="switchTab('analytics')" id="analyticsTab" class="px-4 py-3 font-semibold border-b-2 border-purple-600 text-purple-600">
+                    Analytics
+                </button>
+                <button onclick="switchTab('users')" id="usersTab" class="px-4 py-3 font-semibold border-b-2 border-transparent text-gray-600 hover:text-purple-600">
+                    Users
+                </button>
+                <button onclick="switchTab('products')" id="productsTab" class="px-4 py-3 font-semibold border-b-2 border-transparent text-gray-600 hover:text-purple-600">
+                    All Products
+                </button>
+                <button onclick="switchTab('orders')" id="ordersTab" class="px-4 py-3 font-semibold border-b-2 border-transparent text-gray-600 hover:text-purple-600">
+                    All Orders
+                </button>
+                <button onclick="switchTab('commissions')" id="commissionsTab" class="px-4 py-3 font-semibold border-b-2 border-transparent text-gray-600 hover:text-purple-600">
+                    Commissions
+                </button>
+            </div>
+        </div>
+
+        <!-- Analytics Tab -->
+        <div id="analyticsContent" class="tab-content">
+            <!-- Stats Cards -->
+            <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+                <div class="stat-card bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-gray-600">Total Users</span>
+                        <i class="fas fa-users text-purple-600 text-2xl"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-gray-800" id="totalUsers">0</p>
+                    <p class="text-sm text-gray-500 mt-1"><span id="totalSellers">0</span> Sellers</p>
+                </div>
+                <div class="stat-card bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-gray-600">Total Products</span>
+                        <i class="fas fa-box text-blue-600 text-2xl"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-gray-800" id="totalProducts">0</p>
+                    <p class="text-sm text-gray-500 mt-1"><span id="activeProducts">0</span> Active</p>
+                </div>
+                <div class="stat-card bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-gray-600">Total Orders</span>
+                        <i class="fas fa-shopping-cart text-green-600 text-2xl"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-gray-800" id="totalOrders">0</p>
+                </div>
+                <div class="stat-card bg-white rounded-lg shadow-md p-6">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-gray-600">Commission Earned</span>
+                        <i class="fas fa-dollar-sign text-orange-600 text-2xl"></i>
+                    </div>
+                    <p class="text-3xl font-bold text-gray-800" id="totalCommission">$0</p>
+                    <p class="text-sm text-gray-500 mt-1">15% of sales</p>
+                </div>
+            </div>
+
+            <!-- Revenue Charts -->
+            <div class="grid md:grid-cols-2 gap-6 mb-8">
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-xl font-semibold mb-4">Commission Revenue</h3>
+                    <canvas id="commissionChart" style="height: 300px;"></canvas>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h3 class="text-xl font-semibold mb-4">Subscription Revenue</h3>
+                    <div class="text-center py-8">
+                        <p class="text-5xl font-bold text-purple-600" id="monthlySubscriptionRevenue">$0</p>
+                        <p class="text-gray-600 mt-2">Monthly Recurring Revenue</p>
+                        <p class="text-sm text-gray-500 mt-4">
+                            <span id="activeSubscriptionsCount">0</span> Active Subscriptions × $25/month
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Platform Statistics -->
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h3 class="text-xl font-semibold mb-4">Platform Statistics</h3>
+                <div class="grid md:grid-cols-3 gap-6">
+                    <div class="text-center p-4 bg-purple-50 rounded-lg">
+                        <p class="text-3xl font-bold text-purple-600" id="avgOrderValue">$0</p>
+                        <p class="text-gray-600 mt-2">Avg Order Value</p>
+                    </div>
+                    <div class="text-center p-4 bg-blue-50 rounded-lg">
+                        <p class="text-3xl font-bold text-blue-600" id="totalRevenue">$0</p>
+                        <p class="text-gray-600 mt-2">Total Platform Sales</p>
+                    </div>
+                    <div class="text-center p-4 bg-green-50 rounded-lg">
+                        <p class="text-3xl font-bold text-green-600" id="commissionRate">15%</p>
+                        <p class="text-gray-600 mt-2">Commission Rate</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Users Tab -->
+        <div id="usersContent" class="tab-content hidden">
+            <h3 class="text-2xl font-bold mb-6">User Management</h3>
+            
+            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                <table class="w-full">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">User</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Email</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Role</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Joined</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="usersTable">
+                        <!-- Users will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Products Tab -->
+        <div id="productsContent" class="tab-content hidden">
+            <h3 class="text-2xl font-bold mb-6">All Products</h3>
+            
+            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                <table class="w-full">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Product</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Seller</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Price</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Stock</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="allProductsTable">
+                        <!-- Products will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Orders Tab -->
+        <div id="ordersContent" class="tab-content hidden">
+            <h3 class="text-2xl font-bold mb-6">All Orders</h3>
+            
+            <div class="bg-white rounded-lg shadow-md overflow-hidden">
+                <table class="w-full">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Order ID</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Customer</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Product</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Total</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Commission</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Status</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Date</th>
+                        </tr>
+                    </thead>
+                    <tbody id="allOrdersTable">
+                        <!-- Orders will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Commissions Tab -->
+        <div id="commissionsContent" class="tab-content hidden">
+            <h3 class="text-2xl font-bold mb-6">Commission Tracking</h3>
+            
+            <div class="grid md:grid-cols-3 gap-6 mb-6">
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h4 class="text-gray-600 mb-2">Today's Commission</h4>
+                    <p class="text-3xl font-bold text-purple-600" id="todayCommission">$0</p>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h4 class="text-gray-600 mb-2">This Month</h4>
+                    <p class="text-3xl font-bold text-purple-600" id="monthCommission">$0</p>
+                </div>
+                <div class="bg-white rounded-lg shadow-md p-6">
+                    <h4 class="text-gray-600 mb-2">All Time</h4>
+                    <p class="text-3xl font-bold text-purple-600" id="allTimeCommission">$0</p>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-lg shadow-md p-6">
+                <h4 class="text-xl font-semibold mb-4">Commission by Seller</h4>
+                <table class="w-full">
+                    <thead class="bg-gray-100">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Seller</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Total Sales</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Commission (15%)</th>
+                            <th class="px-6 py-3 text-left text-sm font-semibold text-gray-700">Orders</th>
+                        </tr>
+                    </thead>
+                    <tbody id="commissionBySeller">
+                        <!-- Commission data will be loaded here -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script src="js/admin.js"></script>
+</body>
+</html>

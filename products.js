@@ -1,0 +1,143 @@
+// Products Management
+let allProducts = [];
+let filteredProducts = [];
+
+// Load products on page load
+document.addEventListener('DOMContentLoaded', function() {
+    loadProducts();
+    setupFilters();
+});
+
+// Load products from API
+async function loadProducts() {
+    try {
+        const response = await fetch('tables/products?limit=1000');
+        const data = await response.json();
+        
+        // Filter only active products with active subscriptions
+        allProducts = data.data.filter(p => p.status === 'active' && p.subscription_status === 'active');
+        filteredProducts = [...allProducts];
+        
+        displayProducts();
+    } catch (error) {
+        console.error('Error loading products:', error);
+    }
+}
+
+// Display products in grid
+function displayProducts() {
+    const grid = document.getElementById('productsGrid');
+    
+    if (!grid) return;
+    
+    if (filteredProducts.length === 0) {
+        grid.innerHTML = '<div class="col-span-full text-center py-12 text-gray-500">No products found</div>';
+        return;
+    }
+    
+    grid.innerHTML = filteredProducts.map(product => `
+        <div class="product-card bg-white rounded-lg shadow-md overflow-hidden">
+            <div class="relative h-64 bg-gray-200">
+                <img src="${product.image_url}" alt="${product.name}" class="w-full h-full object-cover">
+                <span class="absolute top-2 right-2 px-3 py-1 bg-purple-600 text-white text-sm rounded-full">
+                    ${product.category}
+                </span>
+            </div>
+            <div class="p-4">
+                <h4 class="text-lg font-semibold text-gray-800 mb-2">${product.name}</h4>
+                <p class="text-gray-600 text-sm mb-3 line-clamp-2">${product.description}</p>
+                <div class="mb-3">
+                    <span class="text-xs text-gray-500 mb-1 block">Colors:</span>
+                    <div class="flex flex-wrap">
+                        ${product.colors.map(color => `
+                            <span class="color-dot" style="background-color: ${getColorHex(color)};" title="${color}"></span>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="flex justify-between items-center">
+                    <span class="text-2xl font-bold text-purple-600">$${product.price.toFixed(2)}</span>
+                    <button onclick="viewProduct('${product.id}')" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">
+                        View Details
+                    </button>
+                </div>
+                <div class="mt-2 text-xs text-gray-500">
+                    <i class="fas fa-box"></i> Stock: ${product.stock}
+                </div>
+            </div>
+        </div>
+    `).join('');
+}
+
+// Setup search and filter functionality
+function setupFilters() {
+    const searchInput = document.getElementById('searchInput');
+    const categoryFilter = document.getElementById('categoryFilter');
+    
+    if (searchInput) {
+        searchInput.addEventListener('input', applyFilters);
+    }
+    
+    if (categoryFilter) {
+        categoryFilter.addEventListener('change', applyFilters);
+    }
+}
+
+// Apply filters
+function applyFilters() {
+    const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
+    const category = document.getElementById('categoryFilter')?.value || '';
+    
+    filteredProducts = allProducts.filter(product => {
+        const matchesSearch = product.name.toLowerCase().includes(searchTerm) || 
+                            product.description.toLowerCase().includes(searchTerm);
+        const matchesCategory = !category || product.category === category;
+        
+        return matchesSearch && matchesCategory;
+    });
+    
+    displayProducts();
+}
+
+// View product details
+function viewProduct(productId) {
+    window.location.href = `product.html?id=${productId}`;
+}
+
+// Get color hex code from color name
+function getColorHex(colorName) {
+    const colorMap = {
+        'White': '#FFFFFF',
+        'Black': '#000000',
+        'Red': '#FF0000',
+        'Blue': '#0000FF',
+        'Navy': '#000080',
+        'Green': '#00FF00',
+        'Yellow': '#FFFF00',
+        'Purple': '#800080',
+        'Pink': '#FFC0CB',
+        'Orange': '#FFA500',
+        'Brown': '#8B4513',
+        'Gray': '#808080',
+        'Grey': '#808080',
+        'Beige': '#F5F5DC',
+        'Teal': '#008080',
+        'Turquoise': '#40E0D0',
+        'Coral': '#FF7F50',
+        'Mint': '#98FF98'
+    };
+    
+    return colorMap[colorName] || '#CCCCCC';
+}
+
+// Get product by ID
+async function getProductById(productId) {
+    try {
+        const response = await fetch(`tables/products/${productId}`);
+        if (response.ok) {
+            return await response.json();
+        }
+    } catch (error) {
+        console.error('Error fetching product:', error);
+    }
+    return null;
+}
