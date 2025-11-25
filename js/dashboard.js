@@ -328,6 +328,21 @@ function closeAddProductModal() {
 async function handleAddProduct(event) {
     event.preventDefault();
     
+    // Show payment confirmation first
+    const confirmPayment = confirm(
+        '⚠️ PRODUCT LISTING FEE REQUIRED ⚠️\n\n' +
+        'To list this product on millo, you must pay a $25 CAD monthly subscription fee.\n\n' +
+        'This fee covers:\n' +
+        '• One product with all color variants\n' +
+        '• Monthly recurring billing\n' +
+        '• Platform hosting and visibility\n\n' +
+        'Click OK to proceed to payment, or Cancel to go back.'
+    );
+    
+    if (!confirmPayment) {
+        return;
+    }
+    
     try {
         const name = document.getElementById('productName').value;
         const description = document.getElementById('productDescription').value;
@@ -339,7 +354,25 @@ async function handleAddProduct(event) {
         
         const colors = colorsStr.split(',').map(c => c.trim()).filter(c => c);
         
-        // Create product
+        // Simulate payment processing (In production, integrate with Stripe)
+        showNotification('Processing payment...', 'info');
+        
+        // TODO: Integrate real Stripe payment here
+        // For now, we'll simulate payment success after 2 seconds
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        const paymentSuccess = confirm(
+            '💳 PAYMENT SIMULATION\n\n' +
+            'In production, this would charge your card $25 CAD via Stripe.\n\n' +
+            'Click OK to simulate successful payment and create product.'
+        );
+        
+        if (!paymentSuccess) {
+            showNotification('Payment cancelled', 'error');
+            return;
+        }
+        
+        // Create product with pending status until payment confirmed
         const newProduct = {
             id: 'prod-' + Date.now(),
             seller_id: seller.id,
@@ -352,13 +385,14 @@ async function handleAddProduct(event) {
             stock: stock,
             status: 'active',
             subscription_status: 'active',
+            payment_confirmed: true,
             created_at: new Date().toISOString()
         };
         
         // Save product to localStorage database
         MilloDB.create('products', newProduct);
         
-        // Create subscription
+        // Create subscription after payment
         const nextBillingDate = new Date();
         nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
         
@@ -368,6 +402,7 @@ async function handleAddProduct(event) {
             product_id: newProduct.id,
             amount: 25,
             status: 'active',
+            payment_method: 'stripe', // In production, store actual Stripe payment method ID
             start_date: new Date().toISOString(),
             next_billing_date: nextBillingDate.toISOString(),
             created_at: new Date().toISOString()
@@ -376,7 +411,7 @@ async function handleAddProduct(event) {
         // Save subscription to localStorage database
         MilloDB.create('subscriptions', newSubscription);
         
-        showNotification('Product added successfully!', 'success');
+        showNotification('✅ Payment successful! Product added and live on marketplace.', 'success');
         closeAddProductModal();
         await loadDashboardData();
         

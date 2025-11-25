@@ -401,3 +401,60 @@ async function deleteProductAsAdmin(productId) {
 function viewProduct(productId) {
     window.open(`product.html?id=${productId}`, '_blank');
 }
+
+// Load owner earnings
+async function loadOwnerEarnings() {
+    try {
+        const response = await fetch('/api/owner-earnings');
+        const earnings = await response.json();
+        
+        document.getElementById('totalEarnings').textContent = `$${earnings.available_balance.toFixed(2)}`;
+        document.getElementById('totalWithdrawn').textContent = `$${earnings.total_withdrawals.toFixed(2)}`;
+        document.getElementById('subscriptionRevenue').textContent = `$${earnings.subscription_revenue.toFixed(2)}`;
+        
+        return earnings;
+    } catch (error) {
+        console.error('Error loading earnings:', error);
+        return null;
+    }
+}
+
+// Withdraw funds
+async function withdrawFunds() {
+    const amount = parseFloat(prompt('Enter withdrawal amount (CAD):'));
+    
+    if (isNaN(amount) || amount <= 0) {
+        alert('Please enter a valid amount');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/withdraw', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                amount,
+                admin_id: admin.id
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+            alert(result.error || 'Withdrawal failed');
+            return;
+        }
+        
+        showNotification(`Successfully withdrew $${amount.toFixed(2)}`, 'success');
+        await loadOwnerEarnings();
+    } catch (error) {
+        console.error('Error withdrawing funds:', error);
+        alert('Failed to process withdrawal');
+    }
+}
+
+// Download database backup
+function downloadBackup() {
+    window.location.href = '/api/backup';
+    showNotification('Database backup downloaded', 'success');
+}

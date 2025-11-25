@@ -1,6 +1,7 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = 3000;
@@ -10,7 +11,10 @@ app.use(cors());
 app.use(express.json());
 app.use(express.static('.')); // Serve static files from current directory
 
-// In-memory database
+// Database file path
+const DB_FILE = path.join(__dirname, 'millo-database.json');
+
+// Initialize database with only admin account
 let db = {
     users: [
         {
@@ -21,163 +25,45 @@ let db = {
             role: 'admin',
             status: 'active',
             created_at: '2024-01-01T00:00:00.000Z'
-        },
-        {
-            id: 'user-seller-1',
-            email: 'seller1@example.com',
-            password: 'seller123',
-            full_name: 'John Seller',
-            role: 'seller',
-            status: 'active',
-            created_at: '2024-01-15T00:00:00.000Z'
-        },
-        {
-            id: 'user-seller-2',
-            email: 'seller2@example.com',
-            password: 'seller123',
-            full_name: 'Jane Merchant',
-            role: 'seller',
-            status: 'active',
-            created_at: '2024-01-20T00:00:00.000Z'
         }
     ],
-    products: [
-        {
-            id: 'prod-1',
-            seller_id: 'user-seller-1',
-            name: 'Classic Cotton T-Shirt',
-            description: 'Comfortable 100% cotton t-shirt perfect for everyday wear. Soft fabric, durable stitching.',
-            price: 29.99,
-            colors: ['White', 'Black', 'Navy', 'Red'],
-            image_url: 'https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=500',
-            category: 'Clothing',
-            stock: 50,
-            status: 'active',
-            subscription_status: 'active',
-            created_at: '2024-02-01T00:00:00.000Z'
-        },
-        {
-            id: 'prod-2',
-            seller_id: 'user-seller-1',
-            name: 'Wireless Bluetooth Headphones',
-            description: 'Premium sound quality with noise cancellation. 30-hour battery life and comfortable design.',
-            price: 89.99,
-            colors: ['Black', 'White', 'Blue'],
-            image_url: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?w=500',
-            category: 'Electronics',
-            stock: 25,
-            status: 'active',
-            subscription_status: 'active',
-            created_at: '2024-02-05T00:00:00.000Z'
-        },
-        {
-            id: 'prod-3',
-            seller_id: 'user-seller-2',
-            name: 'Leather Wallet',
-            description: 'Genuine leather wallet with multiple card slots and bill compartment. Compact and stylish.',
-            price: 39.99,
-            colors: ['Brown', 'Black', 'Tan'],
-            image_url: 'https://images.unsplash.com/photo-1627123424574-724758594e93?w=500',
-            category: 'Accessories',
-            stock: 35,
-            status: 'active',
-            subscription_status: 'active',
-            created_at: '2024-02-10T00:00:00.000Z'
-        },
-        {
-            id: 'prod-4',
-            seller_id: 'user-seller-2',
-            name: 'Yoga Mat Pro',
-            description: 'Non-slip, eco-friendly yoga mat. Extra thick for comfort during workouts and yoga sessions.',
-            price: 49.99,
-            colors: ['Purple', 'Green', 'Blue', 'Pink'],
-            image_url: 'https://images.unsplash.com/photo-1601925260368-ae2f83cf8b7f?w=500',
-            category: 'Sports',
-            stock: 40,
-            status: 'active',
-            subscription_status: 'active',
-            created_at: '2024-02-15T00:00:00.000Z'
-        }
-    ],
-    orders: [
-        {
-            id: 'order-1',
-            customer_email: 'customer@example.com',
-            customer_name: 'Sarah Customer',
-            product_id: 'prod-1',
-            product_name: 'Classic Cotton T-Shirt',
-            color: 'White',
-            quantity: 2,
-            price: 29.99,
-            total: 59.98,
-            seller_id: 'user-seller-1',
-            commission: 8.997,
-            seller_amount: 50.983,
-            status: 'delivered',
-            shipping_address: '123 Main St, Toronto, ON M5H 2N2',
-            created_at: '2024-03-01T10:30:00.000Z'
-        },
-        {
-            id: 'order-2',
-            customer_email: 'john@example.com',
-            customer_name: 'John Doe',
-            product_id: 'prod-2',
-            product_name: 'Wireless Bluetooth Headphones',
-            color: 'Black',
-            quantity: 1,
-            price: 89.99,
-            total: 89.99,
-            seller_id: 'user-seller-1',
-            commission: 13.4985,
-            seller_amount: 76.4915,
-            status: 'processing',
-            shipping_address: '456 Oak Ave, Vancouver, BC V6B 1A1',
-            created_at: '2024-03-05T14:15:00.000Z'
-        }
-    ],
-    subscriptions: [
-        {
-            id: 'sub-1',
-            seller_id: 'user-seller-1',
-            product_id: 'prod-1',
-            amount: 25,
-            status: 'active',
-            start_date: '2024-02-01T00:00:00.000Z',
-            next_billing_date: '2024-04-01T00:00:00.000Z',
-            created_at: '2024-02-01T00:00:00.000Z'
-        },
-        {
-            id: 'sub-2',
-            seller_id: 'user-seller-1',
-            product_id: 'prod-2',
-            amount: 25,
-            status: 'active',
-            start_date: '2024-02-05T00:00:00.000Z',
-            next_billing_date: '2024-04-05T00:00:00.000Z',
-            created_at: '2024-02-05T00:00:00.000Z'
-        },
-        {
-            id: 'sub-3',
-            seller_id: 'user-seller-2',
-            product_id: 'prod-3',
-            amount: 25,
-            status: 'active',
-            start_date: '2024-02-10T00:00:00.000Z',
-            next_billing_date: '2024-04-10T00:00:00.000Z',
-            created_at: '2024-02-10T00:00:00.000Z'
-        },
-        {
-            id: 'sub-4',
-            seller_id: 'user-seller-2',
-            product_id: 'prod-4',
-            amount: 25,
-            status: 'active',
-            start_date: '2024-02-15T00:00:00.000Z',
-            next_billing_date: '2024-04-15T00:00:00.000Z',
-            created_at: '2024-02-15T00:00:00.000Z'
-        }
-    ]
+    products: [], // No demo products
+    orders: [], // No demo orders
+    subscriptions: [], // No demo subscriptions
+    withdrawals: [] // Track owner withdrawals
 };
+
+// Load database from file if exists
+function loadDatabase() {
+    try {
+        if (fs.existsSync(DB_FILE)) {
+            const data = fs.readFileSync(DB_FILE, 'utf8');
+            db = JSON.parse(data);
+            console.log('📦 Database loaded from file');
+        } else {
+            console.log('🆕 Starting with fresh database');
+            saveDatabase();
+        }
+    } catch (error) {
+        console.error('Error loading database:', error);
+    }
+}
+
+// Save database to file
+function saveDatabase() {
+    try {
+        fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
+        console.log('💾 Database saved to file');
+    } catch (error) {
+        console.error('Error saving database:', error);
+    }
+}
+
+// Auto-save database every 30 seconds
+setInterval(saveDatabase, 30000);
+
+// Load database on startup
+loadDatabase();
 
 // Helper function to generate unique IDs
 function generateId(prefix) {
@@ -245,6 +131,7 @@ app.post('/tables/:table', (req, res) => {
     }
     
     db[table].push(data);
+    saveDatabase(); // Auto-save after create
     res.status(201).json(data);
 });
 
@@ -270,6 +157,7 @@ app.put('/tables/:table/:id', (req, res) => {
     }
     
     db[table][index] = data;
+    saveDatabase(); // Auto-save after update
     res.json(data);
 });
 
@@ -296,6 +184,7 @@ app.patch('/tables/:table/:id', (req, res) => {
         created_at: db[table][index].created_at // Preserve created_at
     };
     
+    saveDatabase(); // Auto-save after patch
     res.json(db[table][index]);
 });
 
@@ -314,7 +203,75 @@ app.delete('/tables/:table/:id', (req, res) => {
     }
     
     const deleted = db[table].splice(index, 1)[0];
+    saveDatabase(); // Auto-save after delete
     res.json({ message: 'Record deleted', data: deleted });
+});
+
+// Owner withdrawal endpoint
+app.post('/api/withdraw', (req, res) => {
+    const { amount, admin_id } = req.body;
+    
+    // Verify admin
+    const admin = db.users.find(u => u.id === admin_id && u.role === 'admin');
+    if (!admin) {
+        return res.status(403).json({ error: 'Unauthorized' });
+    }
+    
+    // Calculate available balance
+    const totalCommissions = db.orders.reduce((sum, o) => sum + (o.commission || 0), 0);
+    const totalSubscriptions = db.subscriptions
+        .filter(s => s.status === 'active')
+        .reduce((sum, s) => sum + s.amount, 0);
+    const totalWithdrawals = db.withdrawals.reduce((sum, w) => sum + w.amount, 0);
+    const availableBalance = totalCommissions + totalSubscriptions - totalWithdrawals;
+    
+    if (amount > availableBalance) {
+        return res.status(400).json({ error: 'Insufficient balance' });
+    }
+    
+    // Create withdrawal record
+    const withdrawal = {
+        id: generateId('withdrawal'),
+        admin_id,
+        amount,
+        status: 'completed',
+        created_at: new Date().toISOString()
+    };
+    
+    db.withdrawals.push(withdrawal);
+    saveDatabase();
+    
+    res.json({
+        withdrawal,
+        new_balance: availableBalance - amount
+    });
+});
+
+// Get owner earnings
+app.get('/api/owner-earnings', (req, res) => {
+    const totalCommissions = db.orders.reduce((sum, o) => sum + (o.commission || 0), 0);
+    const totalSubscriptions = db.subscriptions
+        .filter(s => s.status === 'active')
+        .reduce((sum, s) => sum + s.amount, 0);
+    const totalWithdrawals = db.withdrawals.reduce((sum, w) => sum + w.amount, 0);
+    
+    res.json({
+        total_commissions: totalCommissions,
+        subscription_revenue: totalSubscriptions,
+        total_withdrawals: totalWithdrawals,
+        available_balance: totalCommissions + totalSubscriptions - totalWithdrawals
+    });
+});
+
+// Database backup endpoint
+app.get('/api/backup', (req, res) => {
+    const backupFile = path.join(__dirname, `millo-backup-${Date.now()}.json`);
+    fs.writeFileSync(backupFile, JSON.stringify(db, null, 2), 'utf8');
+    res.download(backupFile, `millo-backup-${new Date().toISOString().split('T')[0]}.json`, (err) => {
+        if (!err) {
+            fs.unlinkSync(backupFile); // Delete temp file after download
+        }
+    });
 });
 
 // Serve HTML files
@@ -322,9 +279,23 @@ app.get('/', (req, res) => {
     res.sendFile(path.join(__dirname, 'index.html'));
 });
 
+// Graceful shutdown - save database on exit
+process.on('SIGINT', () => {
+    console.log('\\n💾 Saving database before shutdown...');
+    saveDatabase();
+    process.exit(0);
+});
+
+process.on('SIGTERM', () => {
+    console.log('\\n💾 Saving database before shutdown...');
+    saveDatabase();
+    process.exit(0);
+});
+
 // Start server
 app.listen(PORT, '0.0.0.0', () => {
     console.log(`✨ Millo API Server running on http://0.0.0.0:${PORT}`);
-    console.log(`📊 Database initialized with sample data`);
+    console.log(`📊 Database loaded successfully`);
     console.log(`🛍️  Access the storefront at: http://localhost:${PORT}`);
+    console.log(`💾 Auto-save enabled (every 30 seconds)`);
 });

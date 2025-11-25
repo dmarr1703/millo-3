@@ -10,9 +10,17 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     
-    // Initialize Stripe (using test key for demo)
-    // IMPORTANT: Replace with your actual Stripe publishable key
-    stripe = Stripe('pk_test_51234567890'); // Demo key - replace with real key
+    // Initialize Stripe
+    // IMPORTANT: Replace with your actual Stripe publishable key from dashboard.stripe.com
+    // Get your key at: https://dashboard.stripe.com/apikeys
+    // This is a placeholder - you MUST replace it with your real Stripe key
+    try {
+        stripe = Stripe('pk_test_REPLACE_WITH_YOUR_STRIPE_PUBLISHABLE_KEY');
+    } catch (error) {
+        console.error('Stripe initialization failed:', error);
+        alert('Payment system not configured. Please add your Stripe publishable key in js/checkout.js');
+        return;
+    }
     
     // Create Stripe card element
     const elements = stripe.elements();

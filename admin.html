@@ -70,6 +70,12 @@
                 <button onclick="switchTab('commissions')" id="commissionsTab" class="px-4 py-3 font-semibold border-b-2 border-transparent text-gray-600 hover:text-purple-600">
                     Commissions
                 </button>
+                <button onclick="switchTab('withdrawals')" id="withdrawalsTab" class="px-4 py-3 font-semibold border-b-2 border-transparent text-gray-600 hover:text-purple-600">
+                    <i class="fas fa-money-bill-wave mr-2"></i>Withdrawals
+                </button>
+                <button onclick="switchTab('settings')" id="settingsTab" class="px-4 py-3 font-semibold border-b-2 border-transparent text-gray-600 hover:text-purple-600">
+                    <i class="fas fa-cog mr-2"></i>Settings
+                </button>
             </div>
         </div>
 
@@ -254,10 +260,139 @@
                 </table>
             </div>
         </div>
+
+        <!-- Withdrawals Tab -->
+        <div id="withdrawalsContent" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h3 class="text-xl font-semibold mb-6">Owner Earnings & Withdrawals</h3>
+                
+                <!-- Earnings Summary -->
+                <div class="grid md:grid-cols-4 gap-6 mb-8">
+                    <div class="text-center p-6 bg-green-50 rounded-lg">
+                        <i class="fas fa-wallet text-3xl text-green-600 mb-3"></i>
+                        <p class="text-3xl font-bold text-green-600" id="totalEarnings">$0.00</p>
+                        <p class="text-gray-600 mt-2">Available Balance</p>
+                    </div>
+                    <div class="text-center p-6 bg-blue-50 rounded-lg">
+                        <i class="fas fa-money-check-alt text-3xl text-blue-600 mb-3"></i>
+                        <p class="text-3xl font-bold text-blue-600" id="totalWithdrawn">$0.00</p>
+                        <p class="text-gray-600 mt-2">Total Withdrawn</p>
+                    </div>
+                    <div class="text-center p-6 bg-purple-50 rounded-lg">
+                        <i class="fas fa-percent text-3xl text-purple-600 mb-3"></i>
+                        <p class="text-3xl font-bold text-purple-600" id="totalCommission">$0.00</p>
+                        <p class="text-gray-600 mt-2">Commission Earned</p>
+                    </div>
+                    <div class="text-center p-6 bg-orange-50 rounded-lg">
+                        <i class="fas fa-sync-alt text-3xl text-orange-600 mb-3"></i>
+                        <p class="text-3xl font-bold text-orange-600" id="subscriptionRevenue">$0.00</p>
+                        <p class="text-gray-600 mt-2">Subscription Revenue</p>
+                    </div>
+                </div>
+
+                <!-- Withdrawal Action -->
+                <div class="bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg p-8 text-center">
+                    <h4 class="text-2xl font-bold text-gray-800 mb-4">Withdraw Earnings</h4>
+                    <p class="text-gray-600 mb-6">Transfer your platform earnings to your bank account</p>
+                    <button onclick="withdrawFunds()" class="px-8 py-3 gradient-bg text-white font-semibold rounded-lg hover:opacity-90 transition">
+                        <i class="fas fa-money-bill-wave mr-2"></i>Withdraw Funds
+                    </button>
+                </div>
+
+                <!-- Withdrawal Info -->
+                <div class="mt-6 p-4 bg-blue-50 rounded-lg">
+                    <h5 class="font-semibold text-blue-900 mb-2"><i class="fas fa-info-circle mr-2"></i>How Withdrawals Work</h5>
+                    <ul class="text-sm text-blue-800 space-y-1">
+                        <li>• Your available balance includes 15% commission from all sales + monthly subscription fees ($25/product)</li>
+                        <li>• Withdrawals are processed instantly to your connected account</li>
+                        <li>• All withdrawal history is tracked and saved automatically</li>
+                        <li>• Minimum withdrawal amount: $1.00 CAD</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Settings Tab -->
+        <div id="settingsContent" class="tab-content hidden">
+            <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+                <h3 class="text-xl font-semibold mb-6">Platform Settings & Data Management</h3>
+                
+                <!-- Database Backup -->
+                <div class="mb-8">
+                    <h4 class="text-lg font-semibold mb-4"><i class="fas fa-database mr-2 text-purple-600"></i>Database Management</h4>
+                    <div class="bg-purple-50 p-6 rounded-lg">
+                        <p class="text-gray-700 mb-4">
+                            <strong>Auto-Save Enabled:</strong> All data is automatically saved to the database file every 30 seconds and on every change.
+                        </p>
+                        <p class="text-gray-600 mb-4">
+                            Download a complete backup of your database including all users, products, orders, subscriptions, and withdrawals.
+                        </p>
+                        <button onclick="downloadBackup()" class="px-6 py-3 bg-purple-600 text-white font-semibold rounded-lg hover:bg-purple-700 transition">
+                            <i class="fas fa-download mr-2"></i>Download Database Backup
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Platform Information -->
+                <div class="mb-8">
+                    <h4 class="text-lg font-semibold mb-4"><i class="fas fa-info-circle mr-2 text-blue-600"></i>Platform Information</h4>
+                    <div class="bg-blue-50 p-6 rounded-lg space-y-3">
+                        <div class="flex justify-between">
+                            <span class="font-semibold">Platform Name:</span>
+                            <span>millo Marketplace</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="font-semibold">Commission Rate:</span>
+                            <span>15% of each sale</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="font-semibold">Product Listing Fee:</span>
+                            <span>$25 CAD/month per product</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="font-semibold">Database Location:</span>
+                            <span>millo-database.json</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="font-semibold">Auto-Save Interval:</span>
+                            <span>30 seconds</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data Persistence Notice -->
+                <div class="bg-green-50 p-6 rounded-lg">
+                    <h4 class="text-lg font-semibold mb-3 text-green-900">
+                        <i class="fas fa-check-circle mr-2"></i>Data Persistence Enabled
+                    </h4>
+                    <p class="text-green-800 mb-3">
+                        All platform data is automatically saved and persisted:
+                    </p>
+                    <ul class="text-sm text-green-800 space-y-1 ml-4">
+                        <li>✓ User accounts and authentication data</li>
+                        <li>✓ Product listings and inventory</li>
+                        <li>✓ Order history and transactions</li>
+                        <li>✓ Subscription records and billing</li>
+                        <li>✓ Commission tracking and withdrawals</li>
+                        <li>✓ All changes are saved immediately</li>
+                        <li>✓ Database backed up every 30 seconds</li>
+                        <li>✓ Data persists across server restarts</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="js/db.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/admin.js"></script>
+    <script>
+        // Load owner earnings on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            if (admin) {
+                loadOwnerEarnings();
+            }
+        });
+    </script>
 </body>
 </html>
