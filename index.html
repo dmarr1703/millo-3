@@ -10,6 +10,8 @@
     <style>
         body {
             font-family: 'Poppins', sans-serif;
+            background-color: #0f0f0f;
+            color: #e0e0e0;
         }
         .gradient-bg {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -37,22 +39,22 @@
         }
     </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-black">
     <!-- Navigation -->
-    <nav class="bg-white shadow-md sticky top-0 z-50">
+    <nav class="bg-gray-900 shadow-md sticky top-0 z-50">
         <div class="container mx-auto px-4 py-4">
             <div class="flex justify-between items-center">
                 <div class="flex items-center space-x-8">
                     <h1 class="text-3xl font-bold gradient-bg bg-clip-text text-transparent">millo</h1>
                     <div class="hidden md:flex space-x-6">
-                        <a href="index.html" class="text-gray-700 hover:text-purple-600 transition">Home</a>
-                        <a href="#products" class="text-gray-700 hover:text-purple-600 transition">Products</a>
-                        <a href="#" onclick="showSellerInfo()" class="text-gray-700 hover:text-purple-600 transition">Sell on millo</a>
+                        <a href="index.html" class="text-gray-300 hover:text-purple-400 transition">Home</a>
+                        <a href="#products" class="text-gray-300 hover:text-purple-400 transition">Products</a>
+                        <a href="#" onclick="showSellerInfo()" class="text-gray-300 hover:text-purple-400 transition">Sell on millo</a>
                     </div>
                 </div>
                 <div class="flex items-center space-x-4">
                     <div class="relative" id="cartIcon">
-                        <button onclick="toggleCart()" class="text-gray-700 hover:text-purple-600 transition">
+                        <button onclick="toggleCart()" class="text-gray-300 hover:text-purple-400 transition">
                             <i class="fas fa-shopping-cart text-xl"></i>
                             <span id="cartCount" class="absolute -top-2 -right-2 bg-purple-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">0</span>
                         </button>
@@ -62,13 +64,13 @@
                         <button onclick="showSignup()" class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition">Sign Up</button>
                     </div>
                     <div id="userMenu" class="hidden">
-                        <button onclick="toggleUserDropdown()" class="flex items-center space-x-2 text-gray-700 hover:text-purple-600 transition">
+                        <button onclick="toggleUserDropdown()" class="flex items-center space-x-2 text-gray-300 hover:text-purple-400 transition">
                             <i class="fas fa-user-circle text-2xl"></i>
                             <span id="userName"></span>
                         </button>
-                        <div id="userDropdown" class="hidden absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2">
-                            <a href="dashboard.html" class="block px-4 py-2 text-gray-700 hover:bg-purple-50 transition">Dashboard</a>
-                            <a href="#" onclick="logout()" class="block px-4 py-2 text-gray-700 hover:bg-purple-50 transition">Logout</a>
+                        <div id="userDropdown" class="hidden absolute right-0 mt-2 w-48 bg-gray-800 rounded-lg shadow-lg py-2">
+                            <a href="dashboard.html" class="block px-4 py-2 text-gray-300 hover:bg-gray-700 transition">Dashboard</a>
+                            <a href="#" onclick="logout()" class="block px-4 py-2 text-gray-300 hover:bg-gray-700 transition">Logout</a>
                         </div>
                     </div>
                 </div>
@@ -96,10 +98,10 @@
     <section class="container mx-auto px-4 py-8">
         <div class="flex flex-col md:flex-row gap-4 items-center">
             <div class="flex-1 relative">
-                <input type="text" id="searchInput" placeholder="Search products..." class="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:border-purple-600">
+                <input type="text" id="searchInput" placeholder="Search products..." class="w-full px-4 py-3 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 focus:outline-none focus:border-purple-600">
                 <i class="fas fa-search absolute right-4 top-4 text-gray-400"></i>
             </div>
-            <select id="categoryFilter" class="px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:border-purple-600">
+            <select id="categoryFilter" class="px-4 py-3 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 focus:outline-none focus:border-purple-600">
                 <option value="">All Categories</option>
                 <option value="Clothing">Clothing</option>
                 <option value="Accessories">Accessories</option>
@@ -111,18 +113,18 @@
 
     <!-- Products Section -->
     <section id="products" class="container mx-auto px-4 py-8">
-        <h3 class="text-3xl font-bold text-gray-800 mb-8">Featured Products</h3>
+        <h3 class="text-3xl font-bold text-gray-200 mb-8">Featured Products</h3>
         <div id="productsGrid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
             <!-- Products will be loaded here -->
         </div>
     </section>
 
     <!-- Shopping Cart Sidebar -->
-    <div id="cartSidebar" class="fixed right-0 top-0 h-full w-96 bg-white shadow-2xl transform translate-x-full transition-transform duration-300 z-50">
+    <div id="cartSidebar" class="fixed right-0 top-0 h-full w-96 bg-gray-900 shadow-2xl transform translate-x-full transition-transform duration-300 z-50">
         <div class="p-6">
             <div class="flex justify-between items-center mb-6">
-                <h3 class="text-2xl font-bold">Shopping Cart</h3>
-                <button onclick="toggleCart()" class="text-gray-500 hover:text-gray-700">
+                <h3 class="text-2xl font-bold text-gray-200">Shopping Cart</h3>
+                <button onclick="toggleCart()" class="text-gray-400 hover:text-gray-200">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
@@ -142,30 +144,30 @@
     </div>
 
     <!-- Auth Modal -->
-    <div id="authModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-8 max-w-md w-full mx-4">
+    <div id="authModal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+        <div class="bg-gray-900 rounded-lg p-8 max-w-md w-full mx-4">
             <div class="flex justify-between items-center mb-6">
-                <h3 id="authTitle" class="text-2xl font-bold">Login</h3>
-                <button onclick="closeAuthModal()" class="text-gray-500 hover:text-gray-700">
+                <h3 id="authTitle" class="text-2xl font-bold text-gray-200">Login</h3>
+                <button onclick="closeAuthModal()" class="text-gray-400 hover:text-gray-200">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
             <form id="authForm" onsubmit="handleAuth(event)">
                 <div id="nameField" class="mb-4 hidden">
-                    <label class="block text-gray-700 mb-2">Full Name</label>
-                    <input type="text" id="fullName" class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:border-purple-600">
+                    <label class="block text-gray-300 mb-2">Full Name</label>
+                    <input type="text" id="fullName" class="w-full px-4 py-2 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 focus:outline-none focus:border-purple-600">
                 </div>
                 <div class="mb-4">
-                    <label class="block text-gray-700 mb-2">Email</label>
-                    <input type="email" id="email" required class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:border-purple-600">
+                    <label class="block text-gray-300 mb-2">Email</label>
+                    <input type="email" id="email" required class="w-full px-4 py-2 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 focus:outline-none focus:border-purple-600">
                 </div>
                 <div class="mb-4">
-                    <label class="block text-gray-700 mb-2">Password</label>
-                    <input type="password" id="password" required class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:border-purple-600">
+                    <label class="block text-gray-300 mb-2">Password</label>
+                    <input type="password" id="password" required class="w-full px-4 py-2 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 focus:outline-none focus:border-purple-600">
                 </div>
                 <div id="roleField" class="mb-4 hidden">
-                    <label class="block text-gray-700 mb-2">I want to:</label>
-                    <select id="role" class="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:border-purple-600">
+                    <label class="block text-gray-300 mb-2">I want to:</label>
+                    <select id="role" class="w-full px-4 py-2 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 focus:outline-none focus:border-purple-600">
                         <option value="customer">Shop (Customer)</option>
                         <option value="seller">Sell Products (Seller - $25/month per product)</option>
                     </select>
@@ -183,11 +185,11 @@
     </div>
 
     <!-- Seller Info Modal -->
-    <div id="sellerModal" class="hidden fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-        <div class="bg-white rounded-lg p-8 max-w-2xl w-full mx-4">
+    <div id="sellerModal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+        <div class="bg-gray-900 rounded-lg p-8 max-w-2xl w-full mx-4">
             <div class="flex justify-between items-center mb-6">
-                <h3 class="text-2xl font-bold">Sell on millo</h3>
-                <button onclick="closeSellerModal()" class="text-gray-500 hover:text-gray-700">
+                <h3 class="text-2xl font-bold text-gray-200">Sell on millo</h3>
+                <button onclick="closeSellerModal()" class="text-gray-400 hover:text-gray-200">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
@@ -195,29 +197,29 @@
                 <div class="flex items-start space-x-4">
                     <i class="fas fa-dollar-sign text-purple-600 text-2xl mt-1"></i>
                     <div>
-                        <h4 class="font-semibold text-lg">Simple Pricing</h4>
-                        <p class="text-gray-600">Just $25 CAD per month per product. Same product with same color counts as one.</p>
+                        <h4 class="font-semibold text-lg text-gray-200">Simple Pricing</h4>
+                        <p class="text-gray-400">Just $25 CAD per month per product. Same product with same color counts as one.</p>
                     </div>
                 </div>
                 <div class="flex items-start space-x-4">
                     <i class="fas fa-palette text-purple-600 text-2xl mt-1"></i>
                     <div>
-                        <h4 class="font-semibold text-lg">Multiple Colors</h4>
-                        <p class="text-gray-600">Add color variants to your products without extra charges.</p>
+                        <h4 class="font-semibold text-lg text-gray-200">Multiple Colors</h4>
+                        <p class="text-gray-400">Add color variants to your products without extra charges.</p>
                     </div>
                 </div>
                 <div class="flex items-start space-x-4">
                     <i class="fas fa-chart-line text-purple-600 text-2xl mt-1"></i>
                     <div>
-                        <h4 class="font-semibold text-lg">Track Everything</h4>
-                        <p class="text-gray-600">Manage products, orders, and earnings from your seller dashboard.</p>
+                        <h4 class="font-semibold text-lg text-gray-200">Track Everything</h4>
+                        <p class="text-gray-400">Manage products, orders, and earnings from your seller dashboard.</p>
                     </div>
                 </div>
                 <div class="flex items-start space-x-4">
                     <i class="fas fa-hand-holding-usd text-purple-600 text-2xl mt-1"></i>
                     <div>
-                        <h4 class="font-semibold text-lg">Keep 85% of Sales</h4>
-                        <p class="text-gray-600">We only take 15% commission. The rest is yours!</p>
+                        <h4 class="font-semibold text-lg text-gray-200">Keep 85% of Sales</h4>
+                        <p class="text-gray-400">We only take 15% commission. The rest is yours!</p>
                     </div>
                 </div>
             </div>

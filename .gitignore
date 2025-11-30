@@ -11,6 +11,9 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+# Sensitive key documentation (user reference only)
+STRIPE_KEYS.md
+
 # Build outputs
 dist/
 build/

@@ -6,6 +6,11 @@ const fs = require('fs');
 const app = express();
 const PORT = 3000;
 
+// Stripe configuration - using environment variable for security
+// Set your Stripe secret key as environment variable: STRIPE_SECRET_KEY
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'your_stripe_secret_key_here';
+const stripe = require('stripe')(STRIPE_SECRET_KEY);
+
 // Middleware
 app.use(cors());
 app.use(express.json());
@@ -205,6 +210,60 @@ app.delete('/tables/:table/:id', (req, res) => {
     const deleted = db[table].splice(index, 1)[0];
     saveDatabase(); // Auto-save after delete
     res.json({ message: 'Record deleted', data: deleted });
+});
+
+// Stripe payment intent endpoint
+app.post('/api/create-payment-intent', async (req, res) => {
+    try {
+        const { amount, currency = 'cad', metadata } = req.body;
+        
+        // Create a PaymentIntent with the order amount and currency
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: Math.round(amount * 100), // Convert to cents
+            currency: currency.toLowerCase(),
+            metadata: metadata || {},
+            automatic_payment_methods: {
+                enabled: true,
+            },
+        });
+        
+        res.json({
+            clientSecret: paymentIntent.client_secret,
+            paymentIntentId: paymentIntent.id
+        });
+    } catch (error) {
+        console.error('Stripe payment intent error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Stripe subscription endpoint for sellers
+app.post('/api/create-subscription', async (req, res) => {
+    try {
+        const { seller_id, product_id, amount = 25 } = req.body;
+        
+        // Create a PaymentIntent for subscription fee
+        const paymentIntent = await stripe.paymentIntents.create({
+            amount: amount * 100, // Convert to cents
+            currency: 'cad',
+            metadata: {
+                seller_id,
+                product_id,
+                type: 'subscription'
+            },
+            automatic_payment_methods: {
+                enabled: true,
+            },
+        });
+        
+        res.json({
+            clientSecret: paymentIntent.client_secret,
+            paymentIntentId: paymentIntent.id
+        });
+    } catch (error) {
+        console.error('Stripe subscription error:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // Owner withdrawal endpoint

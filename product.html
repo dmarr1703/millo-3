@@ -10,6 +10,8 @@
     <style>
         body {
             font-family: 'Poppins', sans-serif;
+            background-color: #0f0f0f;
+            color: #e0e0e0;
         }
         .gradient-bg {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
@@ -31,9 +33,9 @@
         }
     </style>
 </head>
-<body class="bg-gray-50">
+<body class="bg-black">
     <!-- Navigation -->
-    <nav class="bg-white shadow-md sticky top-0 z-50">
+    <nav class="bg-gray-900 shadow-md sticky top-0 z-50">
         <div class="container mx-auto px-4 py-4">
             <div class="flex justify-between items-center">
                 <div class="flex items-center space-x-8">
@@ -41,13 +43,13 @@
                         <h1 class="text-3xl font-bold gradient-bg bg-clip-text text-transparent">millo</h1>
                     </a>
                     <div class="hidden md:flex space-x-6">
-                        <a href="index.html" class="text-gray-700 hover:text-purple-600 transition">Home</a>
-                        <a href="index.html#products" class="text-gray-700 hover:text-purple-600 transition">Products</a>
+                        <a href="index.html" class="text-gray-300 hover:text-purple-400 transition">Home</a>
+                        <a href="index.html#products" class="text-gray-300 hover:text-purple-400 transition">Products</a>
                     </div>
                 </div>
                 <div class="flex items-center space-x-4">
                     <div class="relative">
-                        <button onclick="toggleCart()" class="text-gray-700 hover:text-purple-600 transition">
+                        <button onclick="toggleCart()" class="text-gray-300 hover:text-purple-400 transition">
                             <i class="fas fa-shopping-cart text-xl"></i>
                             <span id="cartCount" class="absolute -top-2 -right-2 bg-purple-600 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">0</span>
                         </button>
@@ -59,11 +61,11 @@
 
     <!-- Product Detail Section -->
     <section class="container mx-auto px-4 py-8">
-        <div class="bg-white rounded-lg shadow-lg overflow-hidden">
+        <div class="bg-gray-900 rounded-lg shadow-lg overflow-hidden">
             <div class="grid md:grid-cols-2 gap-8 p-8">
                 <!-- Product Image -->
                 <div>
-                    <div class="relative h-96 bg-gray-200 rounded-lg overflow-hidden">
+                    <div class="relative h-96 bg-gray-800 rounded-lg overflow-hidden">
                         <img id="productImage" src="" alt="" class="w-full h-full object-cover">
                     </div>
                 </div>
@@ -73,8 +75,8 @@
                     <div class="mb-4">
                         <span id="productCategory" class="px-3 py-1 bg-purple-100 text-purple-600 text-sm rounded-full"></span>
                     </div>
-                    <h1 id="productName" class="text-3xl font-bold text-gray-800 mb-4"></h1>
-                    <p id="productDescription" class="text-gray-600 mb-6"></p>
+                    <h1 id="productName" class="text-3xl font-bold text-gray-200 mb-4"></h1>
+                    <p id="productDescription" class="text-gray-400 mb-6"></p>
                     
                     <div class="mb-6">
                         <div class="flex items-baseline space-x-2">
@@ -84,20 +86,20 @@
                     </div>
 
                     <div class="mb-6">
-                        <label class="block text-gray-700 font-semibold mb-3">Select Color:</label>
+                        <label class="block text-gray-300 font-semibold mb-3">Select Color:</label>
                         <div id="colorOptions" class="flex flex-wrap gap-3">
                             <!-- Color options will be loaded here -->
                         </div>
-                        <p id="selectedColorText" class="text-sm text-gray-600 mt-2"></p>
+                        <p id="selectedColorText" class="text-sm text-gray-400 mt-2"></p>
                     </div>
 
                     <div class="mb-6">
-                        <label class="block text-gray-700 font-semibold mb-3">Quantity:</label>
+                        <label class="block text-gray-300 font-semibold mb-3">Quantity:</label>
                         <div class="flex items-center space-x-4">
                             <button onclick="decreaseQuantity()" class="w-10 h-10 bg-gray-200 rounded-lg hover:bg-gray-300 transition">
                                 <i class="fas fa-minus"></i>
                             </button>
-                            <input type="number" id="quantity" value="1" min="1" class="w-20 text-center border border-gray-300 rounded-lg py-2" readonly>
+                            <input type="number" id="quantity" value="1" min="1" class="w-20 text-center border border-gray-700 bg-gray-800 text-gray-200 rounded-lg py-2" readonly>
                             <button onclick="increaseQuantity()" class="w-10 h-10 bg-gray-200 rounded-lg hover:bg-gray-300 transition">
                                 <i class="fas fa-plus"></i>
                             </button>
@@ -105,7 +107,7 @@
                     </div>
 
                     <div class="mb-6">
-                        <div class="flex items-center text-gray-600">
+                        <div class="flex items-center text-gray-400">
                             <i class="fas fa-box mr-2"></i>
                             <span>In Stock: <span id="stockCount" class="font-semibold"></span></span>
                         </div>
@@ -116,9 +118,9 @@
                         Add to Cart
                     </button>
 
-                    <div class="mt-6 p-4 bg-purple-50 rounded-lg">
-                        <h3 class="font-semibold text-gray-800 mb-2">Seller Information</h3>
-                        <p class="text-sm text-gray-600">This product is sold by a verified millo seller</p>
+                    <div class="mt-6 p-4 bg-gray-800 rounded-lg">
+                        <h3 class="font-semibold text-gray-200 mb-2">Seller Information</h3>
+                        <p class="text-sm text-gray-400">This product is sold by a verified millo seller</p>
                     </div>
                 </div>
             </div>
@@ -126,11 +128,11 @@
     </section>
 
     <!-- Shopping Cart Sidebar -->
-    <div id="cartSidebar" class="fixed right-0 top-0 h-full w-96 bg-white shadow-2xl transform translate-x-full transition-transform duration-300 z-50">
+    <div id="cartSidebar" class="fixed right-0 top-0 h-full w-96 bg-gray-900 shadow-2xl transform translate-x-full transition-transform duration-300 z-50">
         <div class="p-6">
             <div class="flex justify-between items-center mb-6">
-                <h3 class="text-2xl font-bold">Shopping Cart</h3>
-                <button onclick="toggleCart()" class="text-gray-500 hover:text-gray-700">
+                <h3 class="text-2xl font-bold text-gray-200">Shopping Cart</h3>
+                <button onclick="toggleCart()" class="text-gray-400 hover:text-gray-200">
                     <i class="fas fa-times text-xl"></i>
                 </button>
             </div>
