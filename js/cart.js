@@ -89,22 +89,22 @@ function updateCartUI() {
     const cartItems = document.getElementById('cartItems');
     if (cartItems) {
         if (cart.length === 0) {
-            cartItems.innerHTML = '<div class="text-center text-gray-500 py-8">Your cart is empty</div>';
+            cartItems.innerHTML = '<div class="text-center text-gray-400 py-8">Your cart is empty</div>';
         } else {
             cartItems.innerHTML = cart.map(item => `
-                <div class="flex items-center space-x-4 border-b pb-4">
-                    <img src="${item.product.image_url}" alt="${item.product.name}" class="w-16 h-16 object-cover rounded">
+                <div class="flex items-center space-x-4 border-b border-gray-800 pb-4">
+                    <img src="${item.product.image_url}" alt="${item.product.name}" class="w-16 h-16 object-cover rounded border border-gray-800">
                     <div class="flex-1">
-                        <h4 class="font-semibold text-sm">${item.product.name}</h4>
-                        <p class="text-xs text-gray-500">Color: ${item.color}</p>
-                        <p class="text-sm font-bold text-purple-600">$${item.product.price.toFixed(2)}</p>
+                        <h4 class="font-semibold text-sm text-white">${item.product.name}</h4>
+                        <p class="text-xs text-gray-400">Color: ${item.color}</p>
+                        <p class="text-sm font-bold text-yellow-400">$${item.product.price.toFixed(2)}</p>
                     </div>
                     <div class="flex items-center space-x-2">
-                        <button onclick="updateCartQuantity('${item.product.id}', '${item.color}', ${item.quantity - 1})" class="w-6 h-6 bg-gray-200 rounded hover:bg-gray-300">-</button>
-                        <span class="w-8 text-center">${item.quantity}</span>
-                        <button onclick="updateCartQuantity('${item.product.id}', '${item.color}', ${item.quantity + 1})" class="w-6 h-6 bg-gray-200 rounded hover:bg-gray-300">+</button>
+                        <button onclick="updateCartQuantity('${item.product.id}', '${item.color}', ${item.quantity - 1})" class="w-6 h-6 bg-gray-800 text-white rounded hover:bg-gray-700">-</button>
+                        <span class="w-8 text-center text-white">${item.quantity}</span>
+                        <button onclick="updateCartQuantity('${item.product.id}', '${item.color}', ${item.quantity + 1})" class="w-6 h-6 bg-gray-800 text-white rounded hover:bg-gray-700">+</button>
                     </div>
-                    <button onclick="removeFromCart('${item.product.id}', '${item.color}')" class="text-red-500 hover:text-red-700">
+                    <button onclick="removeFromCart('${item.product.id}', '${item.color}')" class="text-red-400 hover:text-red-300">
                         <i class="fas fa-trash"></i>
                     </button>
                 </div>
