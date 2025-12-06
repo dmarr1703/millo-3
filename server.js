@@ -2,18 +2,37 @@ const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const fs = require('fs');
+const nodemailer = require('nodemailer');
 require('dotenv').config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Initialize Stripe with secret key
-const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
-
-// Stripe configuration - using environment variable for security
-// Set your Stripe secret key as environment variable: STRIPE_SECRET_KEY
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'your_stripe_secret_key_here';
 const stripe = require('stripe')(STRIPE_SECRET_KEY);
+
+// Email configuration
+const EMAIL_CONFIG = {
+    host: process.env.EMAIL_HOST || 'smtp.gmail.com',
+    port: parseInt(process.env.EMAIL_PORT) || 587,
+    secure: process.env.EMAIL_SECURE === 'true',
+    auth: {
+        user: process.env.EMAIL_USER,
+        pass: process.env.EMAIL_PASSWORD
+    }
+};
+
+const EMAIL_FROM = process.env.EMAIL_FROM || 'Millo Marketplace <noreply@millo.com>';
+
+// Create email transporter
+let emailTransporter = null;
+if (EMAIL_CONFIG.auth.user && EMAIL_CONFIG.auth.pass) {
+    emailTransporter = nodemailer.createTransport(EMAIL_CONFIG);
+    console.log('📧 Email notifications enabled');
+} else {
+    console.log('⚠️  Email notifications disabled - configure EMAIL_USER and EMAIL_PASSWORD');
+}
 
 // Middleware
 app.use(cors());
@@ -329,6 +348,260 @@ app.get('/api/owner-earnings', (req, res) => {
         total_withdrawals: totalWithdrawals,
         available_balance: totalCommissions + totalSubscriptions - totalWithdrawals
     });
+});
+
+// ====================================
+// EMAIL NOTIFICATION FUNCTIONS
+// ====================================
+
+// Send email notification
+async function sendEmail(to, subject, html) {
+    if (!emailTransporter) {
+        console.log('Email not sent - transporter not configured');
+        return { success: false, message: 'Email service not configured' };
+    }
+    
+    try {
+        const info = await emailTransporter.sendMail({
+            from: EMAIL_FROM,
+            to: to,
+            subject: subject,
+            html: html
+        });
+        
+        console.log('✉️  Email sent:', info.messageId);
+        return { success: true, messageId: info.messageId };
+    } catch (error) {
+        console.error('Email error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+// Generate buyer confirmation email HTML
+function generateBuyerEmail(order, seller) {
+    return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+                .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+                .order-details { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; }
+                .detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+                .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+                .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>Order Confirmation</h1>
+                    <p>Thank you for your purchase!</p>
+                </div>
+                <div class="content">
+                    <h2>Hi ${order.customer_name},</h2>
+                    <p>Your order has been received and is being processed. Here are the details:</p>
+                    
+                    <div class="order-details">
+                        <h3>Order Details</h3>
+                        <div class="detail-row">
+                            <strong>Order ID:</strong>
+                            <span>${order.id}</span>
+                        </div>
+                        <div class="detail-row">
+                            <strong>Product:</strong>
+                            <span>${order.product_name}</span>
+                        </div>
+                        <div class="detail-row">
+                            <strong>Color:</strong>
+                            <span>${order.color}</span>
+                        </div>
+                        <div class="detail-row">
+                            <strong>Quantity:</strong>
+                            <span>${order.quantity}</span>
+                        </div>
+                        <div class="detail-row">
+                            <strong>Price per item:</strong>
+                            <span>$${order.price.toFixed(2)} CAD</span>
+                        </div>
+                        <div class="detail-row">
+                            <strong>Total:</strong>
+                            <span><strong>$${order.total.toFixed(2)} CAD</strong></span>
+                        </div>
+                    </div>
+                    
+                    <h3>Shipping Address</h3>
+                    <p>${order.shipping_address}</p>
+                    
+                    <h3>What's Next?</h3>
+                    <p>The seller will process your order and ship it to the address provided. You will receive a shipping notification once your order is on its way.</p>
+                    
+                    <p>If you have any questions about your order, please contact the seller.</p>
+                </div>
+                <div class="footer">
+                    <p>This is an automated email from Millo Marketplace</p>
+                    <p>&copy; ${new Date().getFullYear()} Millo. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+}
+
+// Generate seller notification email HTML
+function generateSellerEmail(order, seller) {
+    return `
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <style>
+                body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+                .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+                .header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; text-align: center; border-radius: 10px 10px 0 0; }
+                .content { background: #f9f9f9; padding: 30px; border-radius: 0 0 10px 10px; }
+                .order-details { background: white; padding: 20px; border-radius: 5px; margin: 20px 0; }
+                .detail-row { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #eee; }
+                .highlight { background: #fff3cd; padding: 15px; border-left: 4px solid #ffc107; margin: 20px 0; }
+                .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
+                .button { display: inline-block; padding: 12px 30px; background: #667eea; color: white; text-decoration: none; border-radius: 5px; margin: 20px 0; }
+            </style>
+        </head>
+        <body>
+            <div class="container">
+                <div class="header">
+                    <h1>🎉 New Order Received!</h1>
+                    <p>You have a new order to fulfill</p>
+                </div>
+                <div class="content">
+                    <h2>Hi ${seller.full_name},</h2>
+                    <p>Great news! You've received a new order for your product.</p>
+                    
+                    <div class="order-details">
+                        <h3>Order Information</h3>
+                        <div class="detail-row">
+                            <strong>Order ID:</strong>
+                            <span>${order.id}</span>
+                        </div>
+                        <div class="detail-row">
+                            <strong>Product:</strong>
+                            <span>${order.product_name}</span>
+                        </div>
+                        <div class="detail-row">
+                            <strong>Color:</strong>
+                            <span>${order.color}</span>
+                        </div>
+                        <div class="detail-row">
+                            <strong>Quantity:</strong>
+                            <span>${order.quantity}</span>
+                        </div>
+                        <div class="detail-row">
+                            <strong>Order Total:</strong>
+                            <span>$${order.total.toFixed(2)} CAD</span>
+                        </div>
+                        <div class="detail-row">
+                            <strong>Your Earnings (85%):</strong>
+                            <span><strong>$${order.seller_amount.toFixed(2)} CAD</strong></span>
+                        </div>
+                        <div class="detail-row">
+                            <strong>Platform Fee (15%):</strong>
+                            <span>$${order.commission.toFixed(2)} CAD</span>
+                        </div>
+                    </div>
+                    
+                    <h3>Customer Information</h3>
+                    <div class="order-details">
+                        <div class="detail-row">
+                            <strong>Name:</strong>
+                            <span>${order.customer_name}</span>
+                        </div>
+                        <div class="detail-row">
+                            <strong>Email:</strong>
+                            <span>${order.customer_email}</span>
+                        </div>
+                    </div>
+                    
+                    <h3>Shipping Address</h3>
+                    <p style="background: white; padding: 15px; border-radius: 5px;">
+                        <strong>${order.customer_name}</strong><br>
+                        ${order.shipping_address}
+                    </p>
+                    
+                    <div class="highlight">
+                        <strong>⚡ Action Required:</strong><br>
+                        Please log in to your seller dashboard to process this order and update the shipping status.
+                    </div>
+                    
+                    <center>
+                        <a href="${process.env.APP_URL || 'http://localhost:3000'}/dashboard.html" class="button">
+                            View Order in Dashboard
+                        </a>
+                    </center>
+                </div>
+                <div class="footer">
+                    <p>This is an automated email from Millo Marketplace</p>
+                    <p>&copy; ${new Date().getFullYear()} Millo. All rights reserved.</p>
+                </div>
+            </div>
+        </body>
+        </html>
+    `;
+}
+
+// Send order notifications endpoint
+app.post('/api/send-order-notification', async (req, res) => {
+    try {
+        const { order_id } = req.body;
+        
+        if (!order_id) {
+            return res.status(400).json({ error: 'Order ID is required' });
+        }
+        
+        // Find the order
+        const order = db.orders.find(o => o.id === order_id);
+        if (!order) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+        
+        // Find the seller
+        const seller = db.users.find(u => u.id === order.seller_id);
+        if (!seller) {
+            return res.status(404).json({ error: 'Seller not found' });
+        }
+        
+        const results = {
+            buyer: { sent: false },
+            seller: { sent: false }
+        };
+        
+        // Send email to buyer
+        if (order.customer_email) {
+            const buyerSubject = `Order Confirmation - ${order.product_name}`;
+            const buyerHtml = generateBuyerEmail(order, seller);
+            const buyerResult = await sendEmail(order.customer_email, buyerSubject, buyerHtml);
+            results.buyer = buyerResult;
+        }
+        
+        // Send email to seller
+        if (seller.email) {
+            const sellerSubject = `New Order Received - ${order.product_name}`;
+            const sellerHtml = generateSellerEmail(order, seller);
+            const sellerResult = await sendEmail(seller.email, sellerSubject, sellerHtml);
+            results.seller = sellerResult;
+        }
+        
+        console.log('📧 Order notifications sent for order:', order_id);
+        res.json({ 
+            success: true, 
+            message: 'Notifications sent',
+            results: results
+        });
+        
+    } catch (error) {
+        console.error('Error sending order notifications:', error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
 // ====================================

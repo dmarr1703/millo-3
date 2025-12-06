@@ -216,6 +216,28 @@ async function processOrders(customerName, customerEmail, shippingAddress, payme
         const updatedStock = item.product.stock - item.quantity;
         MilloDB.update('products', item.product.id, { stock: updatedStock });
         
+        // Send email notifications to buyer and seller
+        try {
+            const response = await fetch('/api/send-order-notification', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    order_id: createdOrder.id
+                })
+            });
+            
+            if (response.ok) {
+                console.log('✉️  Email notifications sent for order:', createdOrder.id);
+            } else {
+                console.warn('⚠️  Failed to send email notifications');
+            }
+        } catch (error) {
+            console.error('❌ Email notification error:', error);
+            // Don't fail the order if email fails - this is non-critical
+        }
+        
         return createdOrder;
     });
     
