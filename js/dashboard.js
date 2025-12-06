@@ -350,9 +350,31 @@ async function handleAddProduct(event) {
         const stock = parseInt(document.getElementById('productStock').value);
         const category = document.getElementById('productCategory').value;
         const colorsStr = document.getElementById('productColors').value;
-        const imageUrl = document.getElementById('productImage').value;
+        const imageFileInput = document.getElementById('productImage');
         
         const colors = colorsStr.split(',').map(c => c.trim()).filter(c => c);
+        
+        // Upload file first
+        let imageUrl = '';
+        if (imageFileInput.files && imageFileInput.files[0]) {
+            showNotification('Uploading file...', 'info');
+            const formData = new FormData();
+            formData.append('file', imageFileInput.files[0]);
+            
+            const uploadResponse = await fetch('/api/upload-file', {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!uploadResponse.ok) {
+                throw new Error('File upload failed');
+            }
+            
+            const uploadData = await uploadResponse.json();
+            imageUrl = uploadData.fileUrl;
+        } else {
+            throw new Error('Please select a file');
+        }
         
         // Simulate payment processing (In production, integrate with Stripe)
         showNotification('Processing payment...', 'info');

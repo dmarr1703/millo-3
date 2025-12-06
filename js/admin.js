@@ -342,6 +342,11 @@ function switchTab(tabName) {
     const activeTab = document.getElementById(tabName + 'Tab');
     activeTab.classList.add('border-purple-600', 'text-purple-600');
     activeTab.classList.remove('border-transparent', 'text-gray-600');
+    
+    // Load email settings when settings tab is opened
+    if (tabName === 'settings') {
+        loadEmailSettings();
+    }
 }
 
 // Toggle user status
@@ -457,4 +462,147 @@ async function withdrawFunds() {
 function downloadBackup() {
     window.location.href = '/api/backup';
     showNotification('Database backup downloaded', 'success');
+}
+
+// Email Settings Functions
+
+// Load email settings on settings tab load
+async function loadEmailSettings() {
+    try {
+        const response = await fetch('/api/email-settings');
+        const settings = await response.json();
+        
+        // Update status
+        const statusDiv = document.getElementById('emailConfigStatus');
+        if (settings.configured) {
+            statusDiv.className = 'mb-4 p-3 bg-green-100 rounded-lg';
+            statusDiv.innerHTML = '<p class="text-green-800"><i class="fas fa-check-circle mr-2"></i>Email notifications are configured and active</p>';
+        } else {
+            statusDiv.className = 'mb-4 p-3 bg-yellow-100 rounded-lg';
+            statusDiv.innerHTML = '<p class="text-yellow-800"><i class="fas fa-exclamation-triangle mr-2"></i>Email notifications are not configured</p>';
+        }
+        
+        // Pre-fill form if configured
+        if (settings.configured) {
+            document.getElementById('emailService').value = settings.service || 'gmail';
+            document.getElementById('emailHost').value = settings.host || '';
+            document.getElementById('emailPort').value = settings.port || 587;
+            document.getElementById('emailSecure').checked = settings.secure || false;
+            document.getElementById('emailFrom').value = settings.from || '';
+            
+            // Toggle custom SMTP fields
+            if (settings.service !== 'gmail') {
+                document.getElementById('customSmtpFields').classList.remove('hidden');
+            }
+        }
+    } catch (error) {
+        console.error('Error loading email settings:', error);
+    }
+}
+
+// Toggle custom SMTP fields based on service selection
+document.addEventListener('DOMContentLoaded', function() {
+    const emailServiceSelect = document.getElementById('emailService');
+    if (emailServiceSelect) {
+        emailServiceSelect.addEventListener('change', function() {
+            const customFields = document.getElementById('customSmtpFields');
+            if (this.value === 'custom') {
+                customFields.classList.remove('hidden');
+            } else {
+                customFields.classList.add('hidden');
+            }
+        });
+    }
+});
+
+// Save email settings
+async function saveEmailSettings() {
+    const service = document.getElementById('emailService').value;
+    const host = document.getElementById('emailHost').value;
+    const port = parseInt(document.getElementById('emailPort').value);
+    const secure = document.getElementById('emailSecure').checked;
+    const user = document.getElementById('emailUser').value;
+    const pass = document.getElementById('emailPass').value;
+    const from = document.getElementById('emailFrom').value;
+    
+    if (!user) {
+        alert('Please enter an email address');
+        return;
+    }
+    
+    if (!pass) {
+        alert('Please enter an app password');
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/email-settings', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                service,
+                host,
+                port,
+                secure,
+                user,
+                pass,
+                from
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('Email settings saved successfully!', 'success');
+            loadEmailSettings(); // Reload to update status
+        } else {
+            alert('Failed to save email settings');
+        }
+    } catch (error) {
+        console.error('Error saving email settings:', error);
+        alert('Failed to save email settings');
+    }
+}
+
+// Test email functionality
+async function testEmail() {
+    const testEmailAddress = prompt('Enter an email address to send a test email to:');
+    
+    if (!testEmailAddress) {
+        return;
+    }
+    
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(testEmailAddress)) {
+        alert('Please enter a valid email address');
+        return;
+    }
+    
+    try {
+        showNotification('Sending test email...', 'info');
+        
+        const response = await fetch('/api/test-email', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                to: testEmailAddress
+            })
+        });
+        
+        const result = await response.json();
+        
+        if (result.success) {
+            showNotification('Test email sent successfully! Check your inbox.', 'success');
+        } else {
+            alert('Failed to send test email: ' + (result.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error sending test email:', error);
+        alert('Failed to send test email');
+    }
 }
