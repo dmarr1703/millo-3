@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://js.stripe.com/v3/"></script>
     <style>
         body {
             font-family: 'Poppins', sans-serif;
@@ -268,6 +269,22 @@
         </div>
     </div>
 
+    <script>
+        // Load Stripe publishable key
+        window.STRIPE_PUBLISHABLE_KEY = null;
+        
+        fetch('/api/stripe/config')
+            .then(response => response.json())
+            .then(data => {
+                window.STRIPE_PUBLISHABLE_KEY = data.publishableKey;
+                console.log('Stripe initialized');
+            })
+            .catch(error => {
+                console.error('Failed to load Stripe config:', error);
+                // Fallback to environment variable or default test key
+                window.STRIPE_PUBLISHABLE_KEY = 'pk_test_51Ndm3QRwc1RkBb2PSIWPn92BbDYkt33NLCly9ZDbrgtlyy57gzC8Q3K0ttC4D95MQOQA95fPPA03D9qGIXpGGkzH00Ih1IrhdK';
+            });
+    </script>
     <script src="js/db.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/dashboard.js"></script>
