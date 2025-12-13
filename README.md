@@ -94,13 +94,17 @@ The platform comes with pre-configured demo accounts:
 
 ## 💳 Payment & Pricing
 
-### Subscription Model
+### Subscription Model (REQUIRED FOR POSTING)
 
-- **Monthly Fee:** $25 CAD per product
+- **Monthly Fee:** $25 CAD per product - **REQUIRED BEFORE POSTING**
+- **Payment Required:** Sellers MUST pay $25/month via Stripe for each product posted
+- **Automatic Recurring:** Monthly billing automatically renews until cancelled
 - **Same Product Rule:** Same product with different colors = 1 subscription
+- **Instant Activation:** Products go live immediately after payment confirmed
 - **Example:** 
   - T-shirt in Red, Blue, Green = $25/month (1 product)
   - T-shirt + Pants = $50/month (2 products)
+- **Failed Payments:** Products automatically deactivated if payment fails
 
 ### Commission Structure
 
@@ -435,14 +439,23 @@ The website is fully previewable and can be downloaded as a complete package. Al
 
 ---
 
-## 🆕 Latest Updates (v2.0)
+## 🆕 Latest Updates (v3.0)
 
 ### New Features Implemented
 
-✅ **Mandatory $25 Posting Fee**
-- Sellers must pay $25 CAD before posting products
-- Payment confirmation required before product goes live
-- Integrated with subscription system
+✅ **REAL Stripe Payment Integration for Product Posting**
+- **Monthly recurring payments** - $25 CAD automatically charged each month
+- **Stripe Checkout** - Secure payment processing with 3D Secure support
+- **Instant activation** - Products go live immediately after payment
+- **Webhook integration** - Automatic subscription status updates
+- **Failed payment handling** - Products deactivated if payment fails
+- **Subscription management** - Sellers can cancel anytime from dashboard
+
+✅ **Enhanced Payment Security**
+- PCI compliant payment processing
+- Stripe Payment Intents API
+- Webhook signature verification
+- Server-side payment confirmation
 
 ✅ **Persistent Data Storage**
 - All data automatically saved to `millo-database.json`
