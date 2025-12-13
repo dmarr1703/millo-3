@@ -612,31 +612,137 @@ app.post('/api/create-payment-intent', async (req, res) => {
     }
 });
 
-// Stripe subscription endpoint for sellers
+// Stripe subscription endpoint for sellers - Monthly recurring payment
 app.post('/api/create-subscription', async (req, res) => {
     try {
-        const { seller_id, product_id, amount = 25 } = req.body;
+        const { seller_id, seller_email, product_id, product_name, amount = 25 } = req.body;
         
-        // Create a PaymentIntent for subscription fee
-        const paymentIntent = await stripe.paymentIntents.create({
-            amount: amount * 100, // Convert to cents
-            currency: 'cad',
-            metadata: {
-                seller_id,
-                product_id,
-                type: 'subscription'
-            },
-            automatic_payment_methods: {
-                enabled: true,
-            },
+        if (!seller_id || !seller_email) {
+            return res.status(400).json({ error: 'Seller ID and email are required' });
+        }
+        
+        // Find or create Stripe customer
+        let customer;
+        const existingCustomers = await stripe.customers.list({
+            email: seller_email,
+            limit: 1
         });
+        
+        if (existingCustomers.data.length > 0) {
+            customer = existingCustomers.data[0];
+        } else {
+            customer = await stripe.customers.create({
+                email: seller_email,
+                metadata: {
+                    seller_id: seller_id
+                }
+            });
+        }
+        
+        // Create a price for monthly subscription
+        const price = await stripe.prices.create({
+            currency: 'cad',
+            unit_amount: amount * 100, // Convert to cents
+            recurring: {
+                interval: 'month',
+                interval_count: 1
+            },
+            product_data: {
+                name: `Product Listing Fee - ${product_name || 'Product'}`,
+                description: 'Monthly subscription fee for listing products on millo marketplace'
+            },
+            metadata: {
+                product_id: product_id || 'pending'
+            }
+        });
+        
+        // Create subscription
+        const subscription = await stripe.subscriptions.create({
+            customer: customer.id,
+            items: [{ price: price.id }],
+            payment_behavior: 'default_incomplete',
+            payment_settings: { save_default_payment_method: 'on_subscription' },
+            expand: ['latest_invoice.payment_intent'],
+            metadata: {
+                seller_id: seller_id,
+                product_id: product_id || 'pending',
+                product_name: product_name || 'Product'
+            }
+        });
+        
+        // Save subscription to database
+        const subscriptionRecord = {
+            id: generateId('subscription'),
+            stripe_subscription_id: subscription.id,
+            stripe_customer_id: customer.id,
+            stripe_price_id: price.id,
+            seller_id: seller_id,
+            product_id: product_id || 'pending',
+            amount: amount,
+            currency: 'cad',
+            status: subscription.status,
+            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+            next_billing_date: new Date(subscription.current_period_end * 1000).toISOString(),
+            start_date: new Date().toISOString(),
+            created_at: new Date().toISOString()
+        };
+        
+        db.subscriptions.push(subscriptionRecord);
+        saveDatabase();
         
         res.json({
-            clientSecret: paymentIntent.client_secret,
-            paymentIntentId: paymentIntent.id
+            subscriptionId: subscriptionRecord.id,
+            stripeSubscriptionId: subscription.id,
+            clientSecret: subscription.latest_invoice.payment_intent.client_secret,
+            status: subscription.status
         });
+        
     } catch (error) {
         console.error('Stripe subscription error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Confirm subscription payment and activate product
+app.post('/api/confirm-subscription', async (req, res) => {
+    try {
+        const { subscription_id, product_id } = req.body;
+        
+        if (!subscription_id) {
+            return res.status(400).json({ error: 'Subscription ID required' });
+        }
+        
+        // Find subscription in database
+        const subscription = db.subscriptions.find(s => s.id === subscription_id);
+        
+        if (!subscription) {
+            return res.status(404).json({ error: 'Subscription not found' });
+        }
+        
+        // Verify subscription status with Stripe
+        const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id);
+        
+        if (stripeSubscription.status === 'active') {
+            // Update subscription in database
+            const subIndex = db.subscriptions.findIndex(s => s.id === subscription_id);
+            db.subscriptions[subIndex].status = 'active';
+            db.subscriptions[subIndex].product_id = product_id;
+            saveDatabase();
+            
+            res.json({
+                success: true,
+                subscription: db.subscriptions[subIndex]
+            });
+        } else {
+            res.status(400).json({ 
+                error: 'Subscription not active', 
+                status: stripeSubscription.status 
+            });
+        }
+        
+    } catch (error) {
+        console.error('Subscription confirmation error:', error);
         res.status(500).json({ error: error.message });
     }
 });
@@ -694,6 +800,114 @@ app.get('/api/owner-earnings', (req, res) => {
         subscription_revenue: totalSubscriptions,
         total_withdrawals: totalWithdrawals,
         available_balance: totalCommissions + totalSubscriptions - totalWithdrawals
+    });
+});
+
+// Stripe webhook endpoint for handling subscription events
+app.post('/api/stripe/webhook', express.raw({type: 'application/json'}), async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    
+    if (!webhookSecret) {
+        console.warn('⚠️  Stripe webhook secret not configured');
+        return res.status(400).send('Webhook secret not configured');
+    }
+    
+    let event;
+    
+    try {
+        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err) {
+        console.error('Webhook signature verification failed:', err.message);
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+    
+    // Handle the event
+    switch (event.type) {
+        case 'invoice.payment_succeeded':
+            const invoice = event.data.object;
+            console.log('💰 Invoice payment succeeded:', invoice.id);
+            
+            // Update subscription status in database
+            const subscription = db.subscriptions.find(s => s.stripe_subscription_id === invoice.subscription);
+            if (subscription) {
+                const subIndex = db.subscriptions.findIndex(s => s.id === subscription.id);
+                db.subscriptions[subIndex].status = 'active';
+                db.subscriptions[subIndex].last_payment_date = new Date().toISOString();
+                saveDatabase();
+            }
+            break;
+            
+        case 'invoice.payment_failed':
+            const failedInvoice = event.data.object;
+            console.log('❌ Invoice payment failed:', failedInvoice.id);
+            
+            // Update subscription status
+            const failedSub = db.subscriptions.find(s => s.stripe_subscription_id === failedInvoice.subscription);
+            if (failedSub) {
+                const subIndex = db.subscriptions.findIndex(s => s.id === failedSub.id);
+                db.subscriptions[subIndex].status = 'past_due';
+                
+                // Deactivate associated product
+                if (failedSub.product_id) {
+                    const productIndex = db.products.findIndex(p => p.id === failedSub.product_id);
+                    if (productIndex !== -1) {
+                        db.products[productIndex].status = 'inactive';
+                        db.products[productIndex].subscription_status = 'past_due';
+                    }
+                }
+                saveDatabase();
+            }
+            break;
+            
+        case 'customer.subscription.deleted':
+            const deletedSub = event.data.object;
+            console.log('🗑️  Subscription deleted:', deletedSub.id);
+            
+            // Cancel subscription in database
+            const cancelledSub = db.subscriptions.find(s => s.stripe_subscription_id === deletedSub.id);
+            if (cancelledSub) {
+                const subIndex = db.subscriptions.findIndex(s => s.id === cancelledSub.id);
+                db.subscriptions[subIndex].status = 'cancelled';
+                
+                // Deactivate product
+                if (cancelledSub.product_id) {
+                    const productIndex = db.products.findIndex(p => p.id === cancelledSub.product_id);
+                    if (productIndex !== -1) {
+                        db.products[productIndex].status = 'inactive';
+                        db.products[productIndex].subscription_status = 'cancelled';
+                    }
+                }
+                saveDatabase();
+            }
+            break;
+            
+        case 'customer.subscription.updated':
+            const updatedSub = event.data.object;
+            console.log('🔄 Subscription updated:', updatedSub.id);
+            
+            // Update subscription in database
+            const existingSub = db.subscriptions.find(s => s.stripe_subscription_id === updatedSub.id);
+            if (existingSub) {
+                const subIndex = db.subscriptions.findIndex(s => s.id === existingSub.id);
+                db.subscriptions[subIndex].status = updatedSub.status;
+                db.subscriptions[subIndex].current_period_start = new Date(updatedSub.current_period_start * 1000).toISOString();
+                db.subscriptions[subIndex].current_period_end = new Date(updatedSub.current_period_end * 1000).toISOString();
+                saveDatabase();
+            }
+            break;
+            
+        default:
+            console.log(`Unhandled event type ${event.type}`);
+    }
+    
+    res.json({received: true});
+});
+
+// Get Stripe publishable key for frontend
+app.get('/api/stripe/config', (req, res) => {
+    res.json({
+        publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder'
     });
 });
 

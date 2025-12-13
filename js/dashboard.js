@@ -324,7 +324,7 @@ function closeAddProductModal() {
     document.getElementById('addProductForm').reset();
 }
 
-// Handle add product
+// Handle add product with real Stripe payment
 async function handleAddProduct(event) {
     event.preventDefault();
     
@@ -376,25 +376,7 @@ async function handleAddProduct(event) {
             throw new Error('Please select a file');
         }
         
-        // Simulate payment processing (In production, integrate with Stripe)
-        showNotification('Processing payment...', 'info');
-        
-        // TODO: Integrate real Stripe payment here
-        // For now, we'll simulate payment success after 2 seconds
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        const paymentSuccess = confirm(
-            '💳 PAYMENT SIMULATION\n\n' +
-            'In production, this would charge your card $25 CAD via Stripe.\n\n' +
-            'Click OK to simulate successful payment and create product.'
-        );
-        
-        if (!paymentSuccess) {
-            showNotification('Payment cancelled', 'error');
-            return;
-        }
-        
-        // Create product with pending status until payment confirmed
+        // Create product first (pending payment)
         const newProduct = {
             id: 'prod-' + Date.now(),
             seller_id: seller.id,
@@ -405,43 +387,122 @@ async function handleAddProduct(event) {
             image_url: imageUrl,
             category: category,
             stock: stock,
-            status: 'active',
-            subscription_status: 'active',
-            payment_confirmed: true,
+            status: 'pending', // Set to pending until payment confirmed
+            subscription_status: 'pending',
+            payment_confirmed: false,
             created_at: new Date().toISOString()
         };
         
-        // Save product to localStorage database
-        MilloDB.create('products', newProduct);
+        // Save product temporarily
+        const productData = await fetch('/tables/products', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newProduct)
+        });
         
-        // Create subscription after payment
-        const nextBillingDate = new Date();
-        nextBillingDate.setMonth(nextBillingDate.getMonth() + 1);
+        if (!productData.ok) {
+            throw new Error('Failed to create product');
+        }
         
-        const newSubscription = {
-            id: 'sub-' + Date.now(),
-            seller_id: seller.id,
-            product_id: newProduct.id,
-            amount: 25,
-            status: 'active',
-            payment_method: 'stripe', // In production, store actual Stripe payment method ID
-            start_date: new Date().toISOString(),
-            next_billing_date: nextBillingDate.toISOString(),
-            created_at: new Date().toISOString()
-        };
+        const createdProduct = await productData.json();
         
-        // Save subscription to localStorage database
-        MilloDB.create('subscriptions', newSubscription);
+        // Create Stripe subscription
+        showNotification('Redirecting to payment...', 'info');
         
-        showNotification('✅ Payment successful! Product added and live on marketplace.', 'success');
-        closeAddProductModal();
-        await loadDashboardData();
+        const subscriptionResponse = await fetch('/api/create-subscription', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                seller_id: seller.id,
+                seller_email: seller.email,
+                product_id: createdProduct.id,
+                product_name: name,
+                amount: 25
+            })
+        });
+        
+        if (!subscriptionResponse.ok) {
+            const errorData = await subscriptionResponse.json();
+            throw new Error(errorData.error || 'Failed to create subscription');
+        }
+        
+        const subscriptionData = await subscriptionResponse.json();
+        
+        // Initialize Stripe
+        const stripe = Stripe(window.STRIPE_PUBLISHABLE_KEY || 'pk_test_51Ndm3QRwc1RkBb2PSIWPn92BbDYkt33NLCly9ZDbrgtlyy57gzC8Q3K0ttC4D95MQOQA95fPPA03D9qGIXpGGkzH00Ih1IrhdK');
+        
+        // Confirm the payment
+        const { error } = await stripe.confirmPayment({
+            clientSecret: subscriptionData.clientSecret,
+            confirmParams: {
+                return_url: window.location.origin + '/dashboard.html?payment=success&subscription=' + subscriptionData.subscriptionId + '&product=' + createdProduct.id,
+            },
+        });
+        
+        if (error) {
+            // Payment failed - delete the pending product
+            await fetch('/tables/products/' + createdProduct.id, {
+                method: 'DELETE'
+            });
+            throw new Error(error.message);
+        }
+        
+        // If we reach here without redirect, payment might be processing
+        showNotification('Processing payment...', 'info');
         
     } catch (error) {
         console.error('Error adding product:', error);
-        alert('Failed to add product: ' + error.message);
+        showNotification('Failed to add product: ' + error.message, 'error');
     }
 }
+
+// Handle payment success on return
+document.addEventListener('DOMContentLoaded', async function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const paymentStatus = urlParams.get('payment');
+    const subscriptionId = urlParams.get('subscription');
+    const productId = urlParams.get('product');
+    
+    if (paymentStatus === 'success' && subscriptionId && productId) {
+        try {
+            // Confirm subscription and activate product
+            const confirmResponse = await fetch('/api/confirm-subscription', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    subscription_id: subscriptionId,
+                    product_id: productId
+                })
+            });
+            
+            if (confirmResponse.ok) {
+                // Update product status to active
+                await fetch('/tables/products/' + productId, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        status: 'active',
+                        subscription_status: 'active',
+                        payment_confirmed: true
+                    })
+                });
+                
+                showNotification('✅ Payment successful! Your product is now live on the marketplace.', 'success');
+                
+                // Clean URL
+                window.history.replaceState({}, document.title, '/dashboard.html');
+                
+                // Reload dashboard
+                setTimeout(() => {
+                    window.location.reload();
+                }, 2000);
+            }
+        } catch (error) {
+            console.error('Error confirming payment:', error);
+            showNotification('Payment successful but failed to activate product. Please contact support.', 'warning');
+        }
+    }
+});
 
 // Toggle product status
 async function toggleProductStatus(productId) {
