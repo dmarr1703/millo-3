@@ -269,6 +269,111 @@
         </div>
     </div>
 
+    <!-- E-Transfer Payment Modal -->
+    <div id="etransferModal" class="hidden fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50 overflow-y-auto">
+        <div class="bg-gray-900 rounded-lg p-8 max-w-2xl w-full mx-4 my-8">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-2xl font-bold text-gray-200">
+                    <i class="fas fa-money-check-alt text-purple-600 mr-2"></i>
+                    Complete Your Monthly Subscription Payment
+                </h3>
+                <button onclick="closeETransferModal()" class="text-gray-400 hover:text-gray-200">
+                    <i class="fas fa-times text-xl"></i>
+                </button>
+            </div>
+
+            <!-- E-Transfer Instructions -->
+            <div class="bg-purple-900 bg-opacity-30 border border-purple-600 rounded-lg p-6 mb-6">
+                <h4 class="text-lg font-bold text-purple-300 mb-4">
+                    <i class="fas fa-info-circle mr-2"></i>
+                    Payment Instructions
+                </h4>
+                <div class="space-y-3 text-gray-300">
+                    <p class="font-semibold text-purple-200">To activate your product: <span id="etransferProductName" class="text-white"></span></p>
+                    <div class="bg-gray-800 rounded p-4 space-y-2">
+                        <div class="flex items-center">
+                            <i class="fas fa-envelope text-purple-400 w-8"></i>
+                            <span class="font-semibold">Send e-Transfer to:</span>
+                            <span class="ml-2 text-purple-300 font-bold">d.marr@live.ca</span>
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fas fa-dollar-sign text-green-400 w-8"></i>
+                            <span class="font-semibold">Amount:</span>
+                            <span class="ml-2 text-green-300 font-bold">$25.00 CAD</span>
+                        </div>
+                        <div class="flex items-center">
+                            <i class="fas fa-calendar-alt text-blue-400 w-8"></i>
+                            <span class="font-semibold">Frequency:</span>
+                            <span class="ml-2 text-blue-300 font-bold">Monthly</span>
+                        </div>
+                    </div>
+                    <p class="text-sm text-gray-400 mt-3">
+                        <i class="fas fa-exclamation-triangle text-yellow-500 mr-2"></i>
+                        <strong>Important:</strong> After sending the e-transfer, please provide the reference number below for verification. Your product will be activated once payment is confirmed.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Payment Submission Form -->
+            <form id="etransferForm" onsubmit="handleETransferSubmit(event)" class="space-y-4">
+                <div>
+                    <label class="block text-gray-300 mb-2 font-semibold">
+                        <i class="fas fa-hashtag text-purple-400 mr-2"></i>
+                        E-Transfer Reference Number *
+                    </label>
+                    <input 
+                        type="text" 
+                        id="etransferReference" 
+                        required 
+                        placeholder="e.g., 1234567890 or ABCD-1234-EFGH"
+                        class="w-full px-4 py-3 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 focus:outline-none focus:border-purple-600"
+                    >
+                    <p class="text-sm text-gray-400 mt-1">Enter the confirmation/reference number from your e-transfer receipt</p>
+                </div>
+
+                <div>
+                    <label class="block text-gray-300 mb-2 font-semibold">
+                        <i class="fas fa-calendar text-purple-400 mr-2"></i>
+                        Transfer Date *
+                    </label>
+                    <input 
+                        type="date" 
+                        id="etransferDate" 
+                        required 
+                        max="<?php echo date('Y-m-d'); ?>"
+                        class="w-full px-4 py-3 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 focus:outline-none focus:border-purple-600"
+                    >
+                    <p class="text-sm text-gray-400 mt-1">Select the date you sent the e-transfer</p>
+                </div>
+
+                <div class="bg-yellow-900 bg-opacity-30 border border-yellow-600 rounded-lg p-4">
+                    <p class="text-sm text-yellow-200">
+                        <i class="fas fa-clock text-yellow-400 mr-2"></i>
+                        <strong>Verification Time:</strong> Your payment will be verified by our admin team. This usually takes 1-24 hours. You'll receive a notification once your product is activated.
+                    </p>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button 
+                        type="submit" 
+                        class="flex-1 px-6 py-3 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700 transition"
+                    >
+                        <i class="fas fa-check-circle mr-2"></i>
+                        Submit Payment Verification
+                    </button>
+                    <button 
+                        type="button" 
+                        onclick="cancelETransfer()"
+                        class="px-6 py-3 bg-red-600 text-white rounded-lg font-semibold hover:bg-red-700 transition"
+                    >
+                        <i class="fas fa-times-circle mr-2"></i>
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <script>
         // Load Stripe publishable key
         window.STRIPE_PUBLISHABLE_KEY = null;

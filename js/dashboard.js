@@ -344,19 +344,23 @@ function closeAddProductModal() {
     document.getElementById('addProductForm').reset();
 }
 
-// Handle add product with real Stripe payment
+// Handle add product with e-transfer payment
 async function handleAddProduct(event) {
     event.preventDefault();
     
-    // Show payment confirmation first
+    // Show e-transfer payment information
     const confirmPayment = confirm(
-        '⚠️ PRODUCT LISTING FEE REQUIRED ⚠️\n\n' +
-        'To list this product on millo, you must pay a $25 CAD monthly subscription fee.\n\n' +
+        '⚠️ MONTHLY SUBSCRIPTION REQUIRED ⚠️\n\n' +
+        'To post this product on millo, you MUST e-transfer $25 CAD to:\n\n' +
+        '📧 Email: d.marr@live.ca\n' +
+        '💰 Amount: $25 CAD\n' +
+        '📅 Frequency: Monthly\n\n' +
         'This fee covers:\n' +
         '• One product with all color variants\n' +
-        '• Monthly recurring billing\n' +
-        '• Platform hosting and visibility\n\n' +
-        'Click OK to proceed to payment, or Cancel to go back.'
+        '• Monthly platform access\n' +
+        '• Product hosting and visibility\n\n' +
+        'After sending the e-transfer, you will need to provide the reference number for verification.\n\n' +
+        'Click OK to proceed, or Cancel to go back.'
     );
     
     if (!confirmPayment) {
@@ -426,54 +430,11 @@ async function handleAddProduct(event) {
         
         const createdProduct = await productData.json();
         
-        // Create Stripe subscription
-        showNotification('Redirecting to payment...', 'info');
+        // Close the add product modal
+        closeAddProductModal();
         
-        const subscriptionResponse = await fetch('/api/create-subscription', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                seller_id: seller.id,
-                seller_email: seller.email,
-                product_id: createdProduct.id,
-                product_name: name,
-                amount: 25
-            })
-        });
-        
-        if (!subscriptionResponse.ok) {
-            const errorData = await subscriptionResponse.json();
-            throw new Error(errorData.error || 'Failed to create subscription');
-        }
-        
-        const subscriptionData = await subscriptionResponse.json();
-        
-        // Check if Stripe publishable key is loaded
-        if (!stripePublishableKey) {
-            throw new Error('Stripe configuration not loaded. Please refresh the page and try again.');
-        }
-        
-        // Initialize Stripe with the loaded publishable key
-        const stripe = Stripe(stripePublishableKey);
-        
-        // Confirm the payment
-        const { error } = await stripe.confirmPayment({
-            clientSecret: subscriptionData.clientSecret,
-            confirmParams: {
-                return_url: window.location.origin + '/dashboard.html?payment=success&subscription=' + subscriptionData.subscriptionId + '&product=' + createdProduct.id,
-            },
-        });
-        
-        if (error) {
-            // Payment failed - delete the pending product
-            await fetch('/tables/products/' + createdProduct.id, {
-                method: 'DELETE'
-            });
-            throw new Error(error.message);
-        }
-        
-        // If we reach here without redirect, payment might be processing
-        showNotification('Processing payment...', 'info');
+        // Show e-transfer payment modal
+        showETransferModal(createdProduct);
         
     } catch (error) {
         console.error('Error adding product:', error);
@@ -624,4 +585,130 @@ async function cancelSubscription(subscriptionId) {
 // Edit product (placeholder for future implementation)
 function editProduct(productId) {
     alert('Edit functionality coming soon! Product ID: ' + productId);
+}
+
+// Show e-transfer payment modal
+function showETransferModal(product) {
+    // Store product data temporarily
+    sessionStorage.setItem('pendingProduct', JSON.stringify(product));
+    
+    // Create and show modal
+    const modal = document.getElementById('etransferModal');
+    if (modal) {
+        // Update product name in modal
+        document.getElementById('etransferProductName').textContent = product.name;
+        modal.classList.remove('hidden');
+    }
+}
+
+// Close e-transfer modal
+function closeETransferModal() {
+    const modal = document.getElementById('etransferModal');
+    if (modal) {
+        modal.classList.add('hidden');
+        document.getElementById('etransferForm').reset();
+    }
+}
+
+// Handle e-transfer payment submission
+async function handleETransferSubmit(event) {
+    event.preventDefault();
+    
+    const referenceNumber = document.getElementById('etransferReference').value;
+    const transferDate = document.getElementById('etransferDate').value;
+    
+    if (!referenceNumber || !transferDate) {
+        showNotification('Please provide reference number and transfer date', 'error');
+        return;
+    }
+    
+    try {
+        // Get pending product
+        const productData = sessionStorage.getItem('pendingProduct');
+        if (!productData) {
+            throw new Error('Product data not found');
+        }
+        
+        const product = JSON.parse(productData);
+        
+        // Submit e-transfer payment
+        const response = await fetch('/api/etransfer/submit', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                seller_id: seller.id,
+                seller_email: seller.email,
+                product_id: product.id,
+                product_name: product.name,
+                reference_number: referenceNumber,
+                amount: 25,
+                transfer_date: transferDate
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to submit payment');
+        }
+        
+        const result = await response.json();
+        
+        // Clear pending product
+        sessionStorage.removeItem('pendingProduct');
+        
+        // Close modal
+        closeETransferModal();
+        
+        // Show success message
+        showNotification(
+            'Payment submitted successfully! Your product will be activated once the admin verifies your e-transfer.',
+            'success'
+        );
+        
+        // Reload dashboard after a delay
+        setTimeout(() => {
+            window.location.reload();
+        }, 3000);
+        
+    } catch (error) {
+        console.error('Error submitting e-transfer:', error);
+        showNotification('Failed to submit payment: ' + error.message, 'error');
+    }
+}
+
+// Cancel e-transfer and delete product
+async function cancelETransfer() {
+    if (!confirm('Are you sure? This will cancel the product creation.')) {
+        return;
+    }
+    
+    try {
+        // Get pending product
+        const productData = sessionStorage.getItem('pendingProduct');
+        if (productData) {
+            const product = JSON.parse(productData);
+            
+            // Delete the pending product
+            await fetch('/tables/products/' + product.id, {
+                method: 'DELETE'
+            });
+            
+            // Clear session storage
+            sessionStorage.removeItem('pendingProduct');
+        }
+        
+        // Close modal
+        closeETransferModal();
+        
+        showNotification('Product creation cancelled', 'info');
+        
+        // Reload dashboard
+        setTimeout(() => {
+            window.location.reload();
+        }, 1500);
+        
+    } catch (error) {
+        console.error('Error cancelling product:', error);
+        showNotification('Failed to cancel: ' + error.message, 'error');
+    }
 }
