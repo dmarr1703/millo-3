@@ -348,25 +348,6 @@ function closeAddProductModal() {
 async function handleAddProduct(event) {
     event.preventDefault();
     
-    // Show e-transfer payment information
-    const confirmPayment = confirm(
-        '⚠️ MONTHLY SUBSCRIPTION REQUIRED ⚠️\n\n' +
-        'To post this product on millo, you MUST e-transfer $25 CAD to:\n\n' +
-        '📧 Email: d.marr@live.ca\n' +
-        '💰 Amount: $25 CAD\n' +
-        '📅 Frequency: Monthly\n\n' +
-        'This fee covers:\n' +
-        '• One product with all color variants\n' +
-        '• Monthly platform access\n' +
-        '• Product hosting and visibility\n\n' +
-        'After sending the e-transfer, you will need to provide the reference number for verification.\n\n' +
-        'Click OK to proceed, or Cancel to go back.'
-    );
-    
-    if (!confirmPayment) {
-        return;
-    }
-    
     try {
         const name = document.getElementById('productName').value;
         const description = document.getElementById('productDescription').value;
@@ -400,7 +381,7 @@ async function handleAddProduct(event) {
             throw new Error('Please select a file');
         }
         
-        // Create product first (pending payment)
+        // Create product and post it immediately as active
         const newProduct = {
             id: 'prod-' + Date.now(),
             seller_id: seller.id,
@@ -411,13 +392,13 @@ async function handleAddProduct(event) {
             image_url: imageUrl,
             category: category,
             stock: stock,
-            status: 'pending', // Set to pending until payment confirmed
-            subscription_status: 'pending',
-            payment_confirmed: false,
+            status: 'active', // Product is active immediately
+            subscription_status: 'active',
+            payment_confirmed: false, // Track payment separately
             created_at: new Date().toISOString()
         };
         
-        // Save product temporarily
+        // Save product
         const productData = await fetch('/tables/products', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -430,11 +411,39 @@ async function handleAddProduct(event) {
         
         const createdProduct = await productData.json();
         
+        // Create subscription record
+        const subscription = {
+            id: 'sub-' + Date.now(),
+            seller_id: seller.id,
+            product_id: createdProduct.id,
+            amount: 25,
+            status: 'active',
+            start_date: new Date().toISOString(),
+            next_billing_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+            created_at: new Date().toISOString()
+        };
+        
+        await fetch('/tables/subscriptions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(subscription)
+        });
+        
         // Close the add product modal
         closeAddProductModal();
         
-        // Show e-transfer payment modal
-        showETransferModal(createdProduct);
+        // Show success message with payment reminder
+        showNotification(
+            '✅ Product posted successfully!\n\n' +
+            '💳 PAYMENT REMINDER: Please send your monthly subscription payment of $25 CAD to d.marr@live.ca via e-transfer.\n\n' +
+            'Your product is now live on the marketplace!',
+            'success'
+        );
+        
+        // Reload dashboard to show new product
+        setTimeout(() => {
+            loadDashboardData();
+        }, 2000);
         
     } catch (error) {
         console.error('Error adding product:', error);
