@@ -94,17 +94,28 @@ The platform comes with pre-configured demo accounts:
 
 ## 💳 Payment & Pricing
 
+### 🔴 REAL MONEY PROCESSING - ALL PAYMENTS ARE LIVE
+
+**⚠️ IMPORTANT:** This platform processes **REAL PAYMENTS** with actual money transfer via Stripe. All card charges are legitimate transactions.
+
 ### Subscription Model (REQUIRED FOR POSTING)
 
-- **Monthly Fee:** $25 CAD per product - **REQUIRED BEFORE POSTING**
-- **Payment Required:** Sellers MUST pay $25/month via Stripe for each product posted
-- **Automatic Recurring:** Monthly billing automatically renews until cancelled
+- **Monthly Fee:** $25 CAD per product - **REAL PAYMENT REQUIRED BEFORE POSTING**
+- **Payment Processing:** Sellers are charged $25/month via Stripe for each product posted
+- **Automatic Recurring:** Monthly billing automatically renews with REAL charges until cancelled
 - **Same Product Rule:** Same product with different colors = 1 subscription
-- **Instant Activation:** Products go live immediately after payment confirmed
+- **Instant Activation:** Products go live immediately after REAL payment confirmed
 - **Example:** 
   - T-shirt in Red, Blue, Green = $25/month (1 product)
   - T-shirt + Pants = $50/month (2 products)
-- **Failed Payments:** Products automatically deactivated if payment fails
+- **Failed Payments:** Products automatically deactivated if REAL payment fails
+
+### Customer Purchase Model
+
+- **Product Purchases:** Customers pay REAL MONEY for products via Stripe
+- **Secure Processing:** All payments processed through Stripe Payment Intents API
+- **Immediate Charge:** Customer cards are charged immediately upon checkout
+- **Payment Verification:** Orders only created after successful payment confirmation
 
 ### Commission Structure
 
@@ -439,16 +450,23 @@ The website is fully previewable and can be downloaded as a complete package. Al
 
 ---
 
-## 🆕 Latest Updates (v3.0)
+## 🆕 Latest Updates (v4.0)
 
-### New Features Implemented
+### ✅ CONFIRMED: ALL PAYMENT METHODS NOW PROCESS REAL MONEY
 
-✅ **REAL Stripe Payment Integration for Product Posting**
+✅ **Customer Checkout Payments - REAL MONEY**
+- **Stripe Payment Intents API** - Charges customer cards immediately
+- **Real payment verification** - Orders only created after successful payment
+- **Payment tracking** - Every order includes Payment Intent ID
+- **Secure processing** - PCI-compliant card handling
+- **Immediate charge** - Money transferred to your Stripe account
+
+✅ **REAL Stripe Payment Integration for Seller Subscriptions**
 - **Monthly recurring payments** - $25 CAD automatically charged each month
 - **Stripe Checkout** - Secure payment processing with 3D Secure support
-- **Instant activation** - Products go live immediately after payment
+- **Instant activation** - Products go live immediately after REAL payment
 - **Webhook integration** - Automatic subscription status updates
-- **Failed payment handling** - Products deactivated if payment fails
+- **Failed payment handling** - Products deactivated if REAL payment fails
 - **Subscription management** - Sellers can cancel anytime from dashboard
 
 ✅ **Enhanced Payment Security**

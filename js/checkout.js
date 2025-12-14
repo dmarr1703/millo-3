@@ -2,7 +2,7 @@
 let stripe;
 let cardElement;
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     // Check if cart is empty
     if (cart.length === 0) {
         alert('Your cart is empty');
@@ -10,15 +10,22 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     
-    // Initialize Stripe
-    // IMPORTANT: Replace with your actual Stripe publishable key from dashboard.stripe.com
-    // Get your key at: https://dashboard.stripe.com/apikeys
-    // This is a LIVE key - real payments will be processed
+    // Initialize Stripe with key from server - SECURE METHOD
     try {
-        stripe = Stripe('pk_live_51Ndm3QRwc1RkBb2PSIWPn92BbDYkt33NLCly9ZDbrgtlyy57gzC8Q3K0ttC4D95MQOQA95fPPA03D9qGIXpGGkzH00Ih1IrhdK');
+        // Fetch Stripe publishable key from server
+        const configResponse = await fetch('/api/stripe/config');
+        const config = await configResponse.json();
+        
+        if (!config.publishableKey || config.publishableKey === 'pk_test_placeholder') {
+            throw new Error('Stripe not configured on server');
+        }
+        
+        // Initialize Stripe with the key from server
+        stripe = Stripe(config.publishableKey);
+        console.log('✅ Stripe initialized successfully (REAL PAYMENT MODE)');
     } catch (error) {
         console.error('Stripe initialization failed:', error);
-        alert('Payment system not configured. Please add your Stripe publishable key in js/checkout.js');
+        alert('Payment system not configured. Please configure Stripe keys in .env file on server.');
         return;
     }
     
@@ -88,13 +95,13 @@ function displayOrderSummary() {
     document.getElementById('checkoutTotal').textContent = `$${total.toFixed(2)}`;
 }
 
-// Handle checkout form submission
+// Handle checkout form submission - REAL PAYMENT PROCESSING
 async function handleCheckout(event) {
     event.preventDefault();
     
     const submitButton = document.getElementById('submitButton');
     submitButton.disabled = true;
-    submitButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing...';
+    submitButton.innerHTML = '<i class="fas fa-spinner fa-spin mr-2"></i>Processing Payment...';
     
     try {
         // Get form data
@@ -107,28 +114,64 @@ async function handleCheckout(event) {
         
         const shippingAddress = `${address}, ${city}, ${province} ${postalCode}`;
         
-        // Create payment method with Stripe
-        const {paymentMethod, error} = await stripe.createPaymentMethod({
-            type: 'card',
-            card: cardElement,
-            billing_details: {
-                name: customerName,
-                email: customerEmail
+        // Calculate total with tax
+        const subtotal = getCartTotal();
+        const tax = subtotal * 0.13; // 13% HST for Canada
+        const total = subtotal + tax;
+        
+        // Create Payment Intent on the server
+        const paymentIntentResponse = await fetch('/api/create-payment-intent', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                amount: total,
+                currency: 'cad',
+                metadata: {
+                    customer_name: customerName,
+                    customer_email: customerEmail,
+                    shipping_address: shippingAddress,
+                    order_count: cart.length
+                }
+            })
+        });
+        
+        if (!paymentIntentResponse.ok) {
+            const errorData = await paymentIntentResponse.json();
+            throw new Error(errorData.error || 'Failed to create payment intent');
+        }
+        
+        const { clientSecret, paymentIntentId } = await paymentIntentResponse.json();
+        
+        // Confirm the payment with Stripe - THIS CHARGES THE CARD
+        const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+            payment_method: {
+                card: cardElement,
+                billing_details: {
+                    name: customerName,
+                    email: customerEmail
+                }
             }
         });
         
-        if (error) {
-            throw new Error(error.message);
+        if (confirmError) {
+            throw new Error(confirmError.message);
         }
         
-        // Process orders
-        await processOrders(customerName, customerEmail, shippingAddress);
+        // Verify payment was successful
+        if (paymentIntent.status !== 'succeeded') {
+            throw new Error('Payment was not successful. Status: ' + paymentIntent.status);
+        }
+        
+        // Payment successful! Now create orders
+        await processOrders(customerName, customerEmail, shippingAddress, paymentIntentId);
         
         // Clear cart
         clearCart();
         
         // Show success and redirect
-        showNotification('Order placed successfully!', 'success');
+        showNotification('Payment successful! Order placed.', 'success');
         setTimeout(() => {
             window.location.href = 'order-success.html';
         }, 1500);
@@ -142,8 +185,8 @@ async function handleCheckout(event) {
     }
 }
 
-// Process orders
-async function processOrders(customerName, customerEmail, shippingAddress) {
+// Process orders - only called after successful payment
+async function processOrders(customerName, customerEmail, shippingAddress, paymentIntentId) {
     const orderPromises = cart.map(async item => {
         const subtotal = item.product.price * item.quantity;
         const commission = subtotal * 0.15; // 15% commission
@@ -162,7 +205,9 @@ async function processOrders(customerName, customerEmail, shippingAddress) {
             commission: commission,
             seller_amount: sellerAmount,
             status: 'pending',
-            shipping_address: shippingAddress
+            shipping_address: shippingAddress,
+            payment_intent_id: paymentIntentId,
+            payment_status: 'paid'
         };
         
         // Save order to localStorage database
