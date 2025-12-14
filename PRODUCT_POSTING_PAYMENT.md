@@ -25,7 +25,8 @@ The millo marketplace now requires sellers to pay a **$25 CAD monthly subscripti
 - No additional charge for multiple colors
 
 ### ✅ Secure Payment Processing
-- **Stripe Payment Intents API** for secure payments
+- **Stripe Payment Intents API** for secure card payments
+- **Invoice-based billing** for B2B customers (NET 30 payment terms)
 - **PCI compliant** - card details never touch your server
 - **3D Secure (SCA)** support for European cards
 - **Strong Customer Authentication** built-in
@@ -40,26 +41,28 @@ The millo marketplace now requires sellers to pay a **$25 CAD monthly subscripti
 
 ## 💳 Payment Flow
 
-### 1. Seller Adds Product
+### Option A: Card Payment Flow (Default)
+
+#### 1. Seller Adds Product
 1. Seller fills out product form (name, price, description, images, colors, etc.)
 2. Seller clicks "Add Product & Subscribe ($25/month)"
 3. System shows confirmation dialog about $25/month fee
 
-### 2. Payment Processing
+#### 2. Payment Processing
 1. Product image/PDF is uploaded to server
 2. Product is created with `status: 'pending'` and `payment_confirmed: false`
 3. Stripe subscription is created with monthly recurring billing
 4. Seller is redirected to Stripe payment page
 5. Seller enters card details securely on Stripe
 
-### 3. Payment Confirmation
+#### 3. Payment Confirmation
 1. Stripe processes the payment
 2. On success, redirects back to dashboard with success parameters
 3. System confirms subscription status with Stripe API
 4. Product status updated to `active` and `payment_confirmed: true`
 5. Product appears live on marketplace immediately
 
-### 4. Recurring Billing
+#### 4. Recurring Billing
 1. Stripe automatically charges card on same day each month
 2. Webhook notifies server of successful payment
 3. Subscription remains active, product stays live
@@ -68,11 +71,43 @@ The millo marketplace now requires sellers to pay a **$25 CAD monthly subscripti
    - Product status → `inactive`
    - Product removed from marketplace until payment succeeds
 
+### Option B: Invoice Payment Flow (B2B)
+
+#### 1. Seller Requests Invoicing
+1. Seller fills out product form with business details
+2. Seller selects "Invoice Payment (NET 30)" option
+3. System creates subscription with `collection_method: send_invoice`
+
+#### 2. Invoice Generation
+1. Product image/PDF is uploaded to server
+2. Product is created with `status: 'pending'` and `payment_confirmed: false`
+3. Stripe subscription is created with invoice collection method
+4. Stripe automatically sends invoice to seller's email
+5. Invoice shows payment due date (default: 30 days from creation)
+
+#### 3. Invoice Payment
+1. Seller receives invoice via email with payment link
+2. Seller can pay via bank transfer, card, or other methods
+3. Payment marked as received in Stripe
+4. Webhook notifies server of payment success
+5. Product status updated to `active` and `payment_confirmed: true`
+
+#### 4. Monthly Invoice Cycle
+1. Stripe generates new invoice on billing date
+2. Invoice sent to seller via email (30 days to pay)
+3. Webhook notifies server when invoice is paid
+4. Subscription remains active, product stays live
+5. If payment not received by due date:
+   - Invoice status → `past_due`
+   - Reminders sent automatically by Stripe
+   - After grace period: subscription → `past_due`
+   - Product status → `inactive`
+
 ---
 
 ## 🔌 API Endpoints
 
-### Create Subscription
+### Create Subscription (Card Payment)
 ```http
 POST /api/create-subscription
 Content-Type: application/json
@@ -95,6 +130,38 @@ Content-Type: application/json
   "status": "incomplete"
 }
 ```
+
+### Create Invoice-Based Subscription (B2B)
+```http
+POST /api/create-invoice-subscription
+Content-Type: application/json
+
+{
+  "seller_id": "user-123",
+  "seller_email": "seller@example.com",
+  "product_id": "prod-456",
+  "product_name": "Cool T-Shirt",
+  "amount": 25,
+  "days_until_due": 30
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "subscriptionId": "subscription-abc-123",
+  "stripeSubscriptionId": "sub_1MxYzABC123",
+  "status": "active",
+  "invoiceUrl": "https://dashboard.stripe.com/invoices/in_xxx",
+  "message": "Invoice subscription created successfully. Invoice will be sent to customer email."
+}
+```
+
+**Key Differences:**
+- **Card Payment**: Requires immediate payment confirmation via Stripe Checkout
+- **Invoice Payment**: Sends invoice via email, payment due within specified days (default 30)
+- **Use Case**: Invoice method ideal for B2B sellers or enterprise customers
 
 ### Confirm Subscription
 ```http

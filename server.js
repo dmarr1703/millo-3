@@ -707,6 +707,112 @@ app.post('/api/create-subscription', async (req, res) => {
     }
 });
 
+// Create invoice-based subscription for sellers - 25 CAD per month per product
+app.post('/api/create-invoice-subscription', async (req, res) => {
+    try {
+        const { seller_id, seller_email, product_id, product_name, amount = 25, days_until_due = 30 } = req.body;
+        
+        if (!seller_id || !seller_email) {
+            return res.status(400).json({ error: 'Seller ID and email are required' });
+        }
+        
+        // Find or create Stripe customer
+        let customer;
+        const existingCustomers = await stripe.customers.list({
+            email: seller_email,
+            limit: 1
+        });
+        
+        if (existingCustomers.data.length > 0) {
+            customer = existingCustomers.data[0];
+        } else {
+            customer = await stripe.customers.create({
+                email: seller_email,
+                metadata: {
+                    seller_id: seller_id
+                }
+            });
+        }
+        
+        // Create a price for monthly subscription (using existing or create new)
+        // For invoice-based subscriptions, we'll create a specific price
+        const price = await stripe.prices.create({
+            currency: 'cad',
+            unit_amount: amount * 100, // Convert to cents
+            recurring: {
+                interval: 'month',
+                interval_count: 1
+            },
+            product_data: {
+                name: `Product Listing Fee - ${product_name || 'Product'}`,
+                description: 'Monthly subscription fee for listing products on millo marketplace (Invoice)'
+            },
+            metadata: {
+                product_id: product_id || 'pending',
+                billing_type: 'invoice'
+            }
+        });
+        
+        // Create invoice-based subscription
+        const subscription = await stripe.subscriptions.create({
+            customer: customer.id,
+            collection_method: 'send_invoice',
+            currency: 'cad',
+            days_until_due: days_until_due,
+            items: [
+                {
+                    price: price.id,
+                    quantity: 1
+                }
+            ],
+            off_session: true,
+            payment_behavior: 'error_if_incomplete',
+            proration_behavior: 'none',
+            metadata: {
+                seller_id: seller_id,
+                product_id: product_id || 'pending',
+                product_name: product_name || 'Product'
+            }
+        });
+        
+        // Save subscription to database
+        const subscriptionRecord = {
+            id: generateId('subscription'),
+            stripe_subscription_id: subscription.id,
+            stripe_customer_id: customer.id,
+            stripe_price_id: price.id,
+            seller_id: seller_id,
+            product_id: product_id || 'pending',
+            amount: amount,
+            currency: 'cad',
+            collection_method: 'send_invoice',
+            days_until_due: days_until_due,
+            status: subscription.status,
+            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
+            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
+            next_billing_date: new Date(subscription.current_period_end * 1000).toISOString(),
+            start_date: new Date().toISOString(),
+            created_at: new Date().toISOString()
+        };
+        
+        db.subscriptions.push(subscriptionRecord);
+        saveDatabase();
+        
+        res.json({
+            success: true,
+            subscriptionId: subscriptionRecord.id,
+            stripeSubscriptionId: subscription.id,
+            status: subscription.status,
+            invoiceUrl: subscription.latest_invoice ? `https://dashboard.stripe.com/invoices/${subscription.latest_invoice}` : null,
+            message: 'Invoice subscription created successfully. Invoice will be sent to customer email.'
+        });
+        
+    } catch (error) {
+        console.error('Stripe invoice subscription error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
 // Confirm subscription payment and activate product
 app.post('/api/confirm-subscription', async (req, res) => {
     try {
