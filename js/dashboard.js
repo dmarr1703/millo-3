@@ -3,8 +3,9 @@ let seller = null;
 let sellerProducts = [];
 let sellerOrders = [];
 let sellerSubscriptions = [];
+let stripePublishableKey = null;
 
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     // Require seller authentication
     seller = requireAuth('seller');
     
@@ -13,9 +14,28 @@ document.addEventListener('DOMContentLoaded', function() {
     // Display seller name
     document.getElementById('sellerName').textContent = seller.full_name;
     
+    // Load Stripe publishable key from API
+    await loadStripeConfig();
+    
     // Load dashboard data
     loadDashboardData();
 });
+
+// Load Stripe configuration from server
+async function loadStripeConfig() {
+    try {
+        const response = await fetch('/api/stripe/config');
+        if (response.ok) {
+            const config = await response.json();
+            stripePublishableKey = config.publishableKey;
+            console.log('Stripe configuration loaded successfully');
+        } else {
+            console.error('Failed to load Stripe configuration');
+        }
+    } catch (error) {
+        console.error('Error loading Stripe configuration:', error);
+    }
+}
 
 // Load all dashboard data
 async function loadDashboardData() {
@@ -428,8 +448,13 @@ async function handleAddProduct(event) {
         
         const subscriptionData = await subscriptionResponse.json();
         
-        // Initialize Stripe
-        const stripe = Stripe(window.STRIPE_PUBLISHABLE_KEY || 'pk_test_51Ndm3QRwc1RkBb2PSIWPn92BbDYkt33NLCly9ZDbrgtlyy57gzC8Q3K0ttC4D95MQOQA95fPPA03D9qGIXpGGkzH00Ih1IrhdK');
+        // Check if Stripe publishable key is loaded
+        if (!stripePublishableKey) {
+            throw new Error('Stripe configuration not loaded. Please refresh the page and try again.');
+        }
+        
+        // Initialize Stripe with the loaded publishable key
+        const stripe = Stripe(stripePublishableKey);
         
         // Confirm the payment
         const { error } = await stripe.confirmPayment({
