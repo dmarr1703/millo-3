@@ -94,21 +94,26 @@ The platform comes with pre-configured demo accounts:
 
 ## 💳 Payment & Pricing
 
-### 🔴 REAL MONEY PROCESSING - ALL PAYMENTS ARE LIVE
+### 🔴 E-TRANSFER PAYMENT SYSTEM - MONTHLY SUBSCRIPTION REQUIRED
 
-**⚠️ IMPORTANT:** This platform processes **REAL PAYMENTS** with actual money transfer via Stripe. All card charges are legitimate transactions.
+**⚠️ IMPORTANT:** Sellers MUST send monthly e-transfer payments of $25 CAD to **d.marr@live.ca** before posting products. Customer purchases are still processed via Stripe.
 
 ### Subscription Model (REQUIRED FOR POSTING)
 
-- **Monthly Fee:** $25 CAD per product - **REAL PAYMENT REQUIRED BEFORE POSTING**
-- **Payment Processing:** Sellers are charged $25/month via Stripe for each product posted
-- **Automatic Recurring:** Monthly billing automatically renews with REAL charges until cancelled
+- **Monthly Fee:** $25 CAD per product - **E-TRANSFER PAYMENT REQUIRED BEFORE POSTING**
+- **Payment Method:** Sellers MUST e-transfer $25 CAD to **d.marr@live.ca** monthly
+- **Payment Process:** 
+  1. Seller creates product listing
+  2. Seller sends e-transfer to d.marr@live.ca
+  3. Seller submits e-transfer reference number
+  4. Admin verifies payment (1-24 hours)
+  5. Product activated upon approval
+- **Recurring Billing:** Monthly e-transfer required to keep products active
 - **Same Product Rule:** Same product with different colors = 1 subscription
-- **Instant Activation:** Products go live immediately after REAL payment confirmed
 - **Example:** 
   - T-shirt in Red, Blue, Green = $25/month (1 product)
   - T-shirt + Pants = $50/month (2 products)
-- **Failed Payments:** Products automatically deactivated if REAL payment fails
+- **Failed Payments:** Products automatically deactivated if payment not received
 
 ### Customer Purchase Model
 
@@ -452,21 +457,22 @@ The website is fully previewable and can be downloaded as a complete package. Al
 
 ## 🆕 Latest Updates (v4.0)
 
-### ✅ CONFIRMED: ALL PAYMENT METHODS NOW PROCESS REAL MONEY
+### ✅ UPDATED PAYMENT SYSTEM
 
-✅ **Customer Checkout Payments - REAL MONEY**
+✅ **Customer Checkout Payments - REAL MONEY (Stripe)**
 - **Stripe Payment Intents API** - Charges customer cards immediately
 - **Real payment verification** - Orders only created after successful payment
 - **Payment tracking** - Every order includes Payment Intent ID
 - **Secure processing** - PCI-compliant card handling
 - **Immediate charge** - Money transferred to your Stripe account
 
-✅ **REAL Stripe Payment Integration for Seller Subscriptions**
-- **Monthly recurring payments** - $25 CAD automatically charged each month
-- **Stripe Checkout** - Secure payment processing with 3D Secure support
-- **Instant activation** - Products go live immediately after REAL payment
-- **Webhook integration** - Automatic subscription status updates
-- **Failed payment handling** - Products deactivated if REAL payment fails
+✅ **Seller Subscription Payments - E-TRANSFER REQUIRED**
+- **Monthly e-transfer payments** - $25 CAD per product to d.marr@live.ca
+- **Manual verification** - Admin reviews and approves each payment
+- **Reference tracking** - Sellers submit e-transfer reference numbers
+- **Payment proof** - All transactions tracked with reference numbers
+- **Instant activation** - Products go live after admin approval (1-24 hours)
+- **Failed payment handling** - Products deactivated if payment not verified
 - **Subscription management** - Sellers can cancel anytime from dashboard
 
 ✅ **Enhanced Payment Security**

@@ -606,3 +606,194 @@ async function testEmail() {
         alert('Failed to send test email');
     }
 }
+
+// E-Transfer Management Functions
+
+// Load e-transfer payments
+async function loadETransfers() {
+    try {
+        const response = await fetch('/api/etransfer/all');
+        const payments = await response.json();
+        
+        // Update stats
+        const pending = payments.filter(p => p.status === 'pending').length;
+        const approved = payments.filter(p => p.status === 'approved').length;
+        const rejected = payments.filter(p => p.status === 'rejected').length;
+        
+        document.getElementById('pendingETransfers').textContent = pending;
+        document.getElementById('approvedETransfers').textContent = approved;
+        document.getElementById('rejectedETransfers').textContent = rejected;
+        
+        // Display payments table
+        displayETransfers(payments);
+        
+    } catch (error) {
+        console.error('Error loading e-transfers:', error);
+    }
+}
+
+// Display e-transfer payments
+function displayETransfers(payments) {
+    const table = document.getElementById('etransfersTable');
+    
+    if (!table) return;
+    
+    if (payments.length === 0) {
+        table.innerHTML = '<tr><td colspan="7" class="px-6 py-8 text-center text-gray-500">No e-transfer payments yet</td></tr>';
+        return;
+    }
+    
+    // Sort by date (newest first), with pending at top
+    payments.sort((a, b) => {
+        if (a.status === 'pending' && b.status !== 'pending') return -1;
+        if (a.status !== 'pending' && b.status === 'pending') return 1;
+        return new Date(b.created_at) - new Date(a.created_at);
+    });
+    
+    table.innerHTML = payments.map(payment => {
+        const statusColors = {
+            'pending': 'bg-yellow-100 text-yellow-800',
+            'approved': 'bg-green-100 text-green-800',
+            'rejected': 'bg-red-100 text-red-800'
+        };
+        
+        const statusColor = statusColors[payment.status] || 'bg-gray-100 text-gray-800';
+        
+        return `
+            <tr class="border-b border-gray-700 hover:bg-gray-800">
+                <td class="px-6 py-4 text-sm">${new Date(payment.created_at).toLocaleDateString()}</td>
+                <td class="px-6 py-4">
+                    <div>
+                        <p class="font-semibold">${payment.seller_email}</p>
+                        <p class="text-xs text-gray-400">${payment.seller_id}</p>
+                    </div>
+                </td>
+                <td class="px-6 py-4">
+                    <p class="font-medium">${payment.product_name || 'N/A'}</p>
+                    <p class="text-xs text-gray-400">${payment.product_id}</p>
+                </td>
+                <td class="px-6 py-4">
+                    <code class="bg-gray-800 px-2 py-1 rounded text-xs text-purple-400">${payment.reference_number}</code>
+                </td>
+                <td class="px-6 py-4 font-semibold text-green-400">$${payment.amount.toFixed(2)} ${payment.currency}</td>
+                <td class="px-6 py-4">
+                    <span class="text-xs px-3 py-1 rounded-full ${statusColor}">
+                        ${payment.status.toUpperCase()}
+                    </span>
+                </td>
+                <td class="px-6 py-4">
+                    ${payment.status === 'pending' ? `
+                        <div class="flex gap-2">
+                            <button onclick="approveETransfer('${payment.id}')" 
+                                class="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700"
+                                title="Approve Payment">
+                                <i class="fas fa-check"></i>
+                            </button>
+                            <button onclick="rejectETransfer('${payment.id}')" 
+                                class="px-3 py-1 bg-red-600 text-white text-sm rounded hover:bg-red-700"
+                                title="Reject Payment">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
+                    ` : payment.status === 'approved' ? `
+                        <span class="text-xs text-green-400">
+                            <i class="fas fa-check-circle mr-1"></i>
+                            Approved ${payment.approved_at ? 'on ' + new Date(payment.approved_at).toLocaleDateString() : ''}
+                        </span>
+                    ` : `
+                        <span class="text-xs text-red-400">
+                            <i class="fas fa-times-circle mr-1"></i>
+                            ${payment.rejection_reason || 'Rejected'}
+                        </span>
+                    `}
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Approve e-transfer payment
+async function approveETransfer(paymentId) {
+    if (!confirm('Are you sure you want to approve this payment? The seller\'s product will be activated.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/etransfer/approve', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                payment_id: paymentId,
+                admin_id: admin.id
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to approve payment');
+        }
+        
+        const result = await response.json();
+        showNotification('Payment approved successfully! Product activated.', 'success');
+        
+        // Reload data
+        await loadETransfers();
+        await loadDashboardData();
+        
+    } catch (error) {
+        console.error('Error approving payment:', error);
+        alert('Failed to approve payment: ' + error.message);
+    }
+}
+
+// Reject e-transfer payment
+async function rejectETransfer(paymentId) {
+    const reason = prompt('Enter rejection reason (optional):');
+    
+    if (reason === null) {
+        return; // User cancelled
+    }
+    
+    if (!confirm('Are you sure you want to reject this payment? The seller\'s product will be deleted.')) {
+        return;
+    }
+    
+    try {
+        const response = await fetch('/api/etransfer/reject', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                payment_id: paymentId,
+                admin_id: admin.id,
+                reason: reason || 'Payment verification failed'
+            })
+        });
+        
+        if (!response.ok) {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to reject payment');
+        }
+        
+        const result = await response.json();
+        showNotification('Payment rejected. Product removed.', 'info');
+        
+        // Reload data
+        await loadETransfers();
+        await loadDashboardData();
+        
+    } catch (error) {
+        console.error('Error rejecting payment:', error);
+        alert('Failed to reject payment: ' + error.message);
+    }
+}
+
+// Add to the DOMContentLoaded event listener at the top
+document.addEventListener('DOMContentLoaded', async function() {
+    // ... existing code ...
+    
+    // Load e-transfers when switching to that tab
+    const etransfersTab = document.getElementById('etransfersTab');
+    if (etransfersTab) {
+        etransfersTab.addEventListener('click', loadETransfers);
+    }
+});

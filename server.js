@@ -75,6 +75,7 @@ let db = {
     orders: [], // No demo orders
     subscriptions: [], // No demo subscriptions
     withdrawals: [], // Track owner withdrawals
+    etransfer_payments: [], // Track e-transfer payments
     settings: {
         email: {
             service: 'gmail',
@@ -86,6 +87,12 @@ let db = {
                 pass: ''
             },
             from: 'noreply@millo.com'
+        },
+        etransfer: {
+            email: 'd.marr@live.ca',
+            amount: 25,
+            currency: 'CAD',
+            frequency: 'monthly'
         }
     }
 };
@@ -854,6 +861,189 @@ app.post('/api/confirm-subscription', async (req, res) => {
         console.error('Subscription confirmation error:', error);
         res.status(500).json({ error: error.message });
     }
+});
+
+// E-transfer payment submission endpoint
+app.post('/api/etransfer/submit', async (req, res) => {
+    try {
+        const { 
+            seller_id, 
+            seller_email, 
+            product_id, 
+            product_name,
+            reference_number,
+            amount,
+            transfer_date 
+        } = req.body;
+        
+        if (!seller_id || !seller_email || !reference_number) {
+            return res.status(400).json({ error: 'Seller ID, email, and reference number are required' });
+        }
+        
+        // Create e-transfer payment record (pending admin approval)
+        const etransferPayment = {
+            id: generateId('etransfer'),
+            seller_id: seller_id,
+            seller_email: seller_email,
+            product_id: product_id || 'pending',
+            product_name: product_name || 'Product',
+            reference_number: reference_number,
+            amount: amount || 25,
+            currency: 'CAD',
+            transfer_date: transfer_date || new Date().toISOString(),
+            status: 'pending', // pending, approved, rejected
+            created_at: new Date().toISOString(),
+            approved_at: null,
+            approved_by: null
+        };
+        
+        db.etransfer_payments.push(etransferPayment);
+        saveDatabase();
+        
+        res.json({
+            success: true,
+            payment: etransferPayment,
+            message: 'E-transfer payment submitted successfully. Please wait for admin approval.'
+        });
+        
+    } catch (error) {
+        console.error('E-transfer submission error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get e-transfer payments for a seller
+app.get('/api/etransfer/seller/:seller_id', (req, res) => {
+    const { seller_id } = req.params;
+    const payments = db.etransfer_payments.filter(p => p.seller_id === seller_id);
+    res.json(payments);
+});
+
+// Get all e-transfer payments (admin only)
+app.get('/api/etransfer/all', (req, res) => {
+    res.json(db.etransfer_payments);
+});
+
+// Approve e-transfer payment (admin only)
+app.post('/api/etransfer/approve', async (req, res) => {
+    try {
+        const { payment_id, admin_id } = req.body;
+        
+        // Verify admin
+        const admin = db.users.find(u => u.id === admin_id && u.role === 'admin');
+        if (!admin) {
+            return res.status(403).json({ error: 'Unauthorized - admin access required' });
+        }
+        
+        // Find payment
+        const paymentIndex = db.etransfer_payments.findIndex(p => p.id === payment_id);
+        if (paymentIndex === -1) {
+            return res.status(404).json({ error: 'Payment not found' });
+        }
+        
+        const payment = db.etransfer_payments[paymentIndex];
+        
+        // Update payment status
+        db.etransfer_payments[paymentIndex].status = 'approved';
+        db.etransfer_payments[paymentIndex].approved_at = new Date().toISOString();
+        db.etransfer_payments[paymentIndex].approved_by = admin_id;
+        
+        // Activate the product if it exists
+        if (payment.product_id && payment.product_id !== 'pending') {
+            const productIndex = db.products.findIndex(p => p.id === payment.product_id);
+            if (productIndex !== -1) {
+                db.products[productIndex].status = 'active';
+                db.products[productIndex].subscription_status = 'active';
+                db.products[productIndex].payment_confirmed = true;
+            }
+        }
+        
+        // Create subscription record
+        const subscription = {
+            id: generateId('subscription'),
+            seller_id: payment.seller_id,
+            product_id: payment.product_id,
+            amount: payment.amount,
+            currency: 'CAD',
+            status: 'active',
+            payment_method: 'etransfer',
+            etransfer_payment_id: payment_id,
+            start_date: new Date().toISOString(),
+            next_billing_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
+            created_at: new Date().toISOString()
+        };
+        
+        db.subscriptions.push(subscription);
+        saveDatabase();
+        
+        res.json({
+            success: true,
+            payment: db.etransfer_payments[paymentIndex],
+            subscription: subscription,
+            message: 'Payment approved and product activated'
+        });
+        
+    } catch (error) {
+        console.error('E-transfer approval error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Reject e-transfer payment (admin only)
+app.post('/api/etransfer/reject', async (req, res) => {
+    try {
+        const { payment_id, admin_id, reason } = req.body;
+        
+        // Verify admin
+        const admin = db.users.find(u => u.id === admin_id && u.role === 'admin');
+        if (!admin) {
+            return res.status(403).json({ error: 'Unauthorized - admin access required' });
+        }
+        
+        // Find payment
+        const paymentIndex = db.etransfer_payments.findIndex(p => p.id === payment_id);
+        if (paymentIndex === -1) {
+            return res.status(404).json({ error: 'Payment not found' });
+        }
+        
+        const payment = db.etransfer_payments[paymentIndex];
+        
+        // Update payment status
+        db.etransfer_payments[paymentIndex].status = 'rejected';
+        db.etransfer_payments[paymentIndex].rejected_at = new Date().toISOString();
+        db.etransfer_payments[paymentIndex].rejected_by = admin_id;
+        db.etransfer_payments[paymentIndex].rejection_reason = reason || 'Payment verification failed';
+        
+        // Delete the pending product if it exists
+        if (payment.product_id && payment.product_id !== 'pending') {
+            const productIndex = db.products.findIndex(p => p.id === payment.product_id);
+            if (productIndex !== -1) {
+                db.products.splice(productIndex, 1);
+            }
+        }
+        
+        saveDatabase();
+        
+        res.json({
+            success: true,
+            payment: db.etransfer_payments[paymentIndex],
+            message: 'Payment rejected and product removed'
+        });
+        
+    } catch (error) {
+        console.error('E-transfer rejection error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Get e-transfer settings
+app.get('/api/etransfer/settings', (req, res) => {
+    res.json(db.settings.etransfer || {
+        email: 'd.marr@live.ca',
+        amount: 25,
+        currency: 'CAD',
+        frequency: 'monthly'
+    });
 });
 
 // Owner withdrawal endpoint
