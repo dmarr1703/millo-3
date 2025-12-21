@@ -1,10 +1,14 @@
 // Shopping Cart Management
 let cart = [];
+let cartStripe = null;
+let cartPaymentRequest = null;
 
 // Load cart from localStorage on page load
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', async function() {
     loadCart();
     updateCartUI();
+    // Initialize cart Apple Pay
+    await initializeCartApplePay();
 });
 
 // Load cart from localStorage
@@ -142,4 +146,220 @@ function clearCart() {
     cart = [];
     saveCart();
     updateCartUI();
+}
+
+// Initialize Apple Pay for cart
+async function initializeCartApplePay() {
+    try {
+        // Only initialize if cart has items
+        if (cart.length === 0) {
+            return;
+        }
+        
+        // Initialize Stripe
+        const configResponse = await fetch('/api/stripe/config');
+        const config = await configResponse.json();
+        
+        if (!config.publishableKey || config.publishableKey === 'pk_test_placeholder') {
+            console.log('Stripe not configured - Cart Apple Pay disabled');
+            return;
+        }
+        
+        cartStripe = Stripe(config.publishableKey);
+        
+        // Calculate total with tax
+        const subtotal = getCartTotal();
+        const tax = subtotal * 0.13;
+        const total = subtotal + tax;
+        
+        // Create payment request
+        cartPaymentRequest = cartStripe.paymentRequest({
+            country: 'CA',
+            currency: 'cad',
+            total: {
+                label: 'Cart Total',
+                amount: Math.round(total * 100),
+            },
+            requestPayerName: true,
+            requestPayerEmail: true,
+            requestShipping: true,
+            shippingOptions: [
+                {
+                    id: 'free-shipping',
+                    label: 'Free Shipping',
+                    detail: 'Arrives in 5-7 business days',
+                    amount: 0,
+                }
+            ],
+        });
+        
+        // Check if Apple Pay is available
+        const result = await cartPaymentRequest.canMakePayment();
+        
+        if (result) {
+            // Show Apple Pay button
+            const applePayButton = document.getElementById('cart-apple-pay-button');
+            if (applePayButton) {
+                applePayButton.classList.remove('hidden');
+                
+                // Create and mount button
+                const elements = cartStripe.elements();
+                const prButton = elements.create('paymentRequestButton', {
+                    paymentRequest: cartPaymentRequest,
+                    style: {
+                        paymentRequestButton: {
+                            type: 'buy',
+                            theme: 'dark',
+                            height: '48px',
+                        },
+                    },
+                });
+                
+                prButton.mount('#cart-apple-pay-button');
+                
+                // Handle payment
+                cartPaymentRequest.on('paymentmethod', async (ev) => {
+                    await handleCartApplePayment(ev);
+                });
+                
+                console.log('✅ Cart Apple Pay initialized');
+            }
+        }
+    } catch (error) {
+        console.error('Cart Apple Pay initialization error:', error);
+    }
+}
+
+// Handle Apple Pay payment for cart
+async function handleCartApplePayment(ev) {
+    try {
+        // Get payment details
+        const shippingAddress = ev.shippingAddress;
+        const customerName = ev.payerName || shippingAddress.recipient || 'Apple Pay Customer';
+        const customerEmail = ev.payerEmail || currentUser?.email || 'applepay@customer.com';
+        
+        // Format shipping address
+        const addressParts = [
+            shippingAddress.addressLine?.[0] || '',
+            shippingAddress.city || '',
+            shippingAddress.region || '',
+            shippingAddress.postalCode || '',
+            shippingAddress.country || 'CA'
+        ].filter(part => part);
+        const formattedAddress = addressParts.join(', ');
+        
+        const subtotal = getCartTotal();
+        const tax = subtotal * 0.13;
+        const total = subtotal + tax;
+        
+        // Create Payment Intent
+        const paymentIntentResponse = await fetch('/api/create-payment-intent', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                amount: total,
+                currency: 'cad',
+                payment_method_types: ['card'],
+                metadata: {
+                    customer_name: customerName,
+                    customer_email: customerEmail,
+                    shipping_address: formattedAddress,
+                    order_count: cart.length,
+                    payment_method: 'apple_pay'
+                }
+            })
+        });
+        
+        if (!paymentIntentResponse.ok) {
+            const errorData = await paymentIntentResponse.json();
+            ev.complete('fail');
+            throw new Error(errorData.error || 'Failed to create payment intent');
+        }
+        
+        const { clientSecret, paymentIntentId } = await paymentIntentResponse.json();
+        
+        // Confirm payment
+        const { error: confirmError, paymentIntent } = await cartStripe.confirmCardPayment(
+            clientSecret,
+            { payment_method: ev.paymentMethod.id },
+            { handleActions: false }
+        );
+        
+        if (confirmError) {
+            ev.complete('fail');
+            throw new Error(confirmError.message);
+        }
+        
+        if (paymentIntent.status !== 'succeeded') {
+            ev.complete('fail');
+            throw new Error('Payment failed');
+        }
+        
+        // Complete Apple Pay
+        ev.complete('success');
+        
+        // Process all cart orders
+        const orderPromises = cart.map(async item => {
+            const itemSubtotal = item.product.price * item.quantity;
+            const commission = itemSubtotal * 0.15;
+            const sellerAmount = itemSubtotal * 0.85;
+            
+            const order = {
+                customer_email: customerEmail,
+                customer_name: customerName,
+                product_id: item.product.id,
+                product_name: item.product.name,
+                color: item.color,
+                quantity: item.quantity,
+                price: item.product.price,
+                total: itemSubtotal,
+                seller_id: item.product.seller_id,
+                commission: commission,
+                seller_amount: sellerAmount,
+                status: 'pending',
+                shipping_address: formattedAddress,
+                payment_intent_id: paymentIntentId,
+                payment_status: 'paid'
+            };
+            
+            const createdOrder = MilloDB.create('orders', order);
+            
+            // Update stock
+            const updatedStock = item.product.stock - item.quantity;
+            MilloDB.update('products', item.product.id, { stock: updatedStock });
+            
+            // Send email notifications
+            try {
+                await fetch('/api/send-order-notification', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ orderId: createdOrder.id })
+                });
+            } catch (emailError) {
+                console.error('Failed to send email notifications:', emailError);
+            }
+            
+            return createdOrder;
+        });
+        
+        await Promise.all(orderPromises);
+        
+        // Clear cart
+        clearCart();
+        
+        // Show success and redirect
+        showNotification('Apple Pay payment successful!', 'success');
+        setTimeout(() => {
+            window.location.href = 'order-success.html';
+        }, 1500);
+        
+    } catch (error) {
+        console.error('Cart Apple Pay payment error:', error);
+        ev.complete('fail');
+        alert('Payment failed: ' + error.message);
+    }
 }

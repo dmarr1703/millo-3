@@ -1,6 +1,7 @@
 // Checkout Page
 let stripe;
 let cardElement;
+let paymentRequest;
 
 document.addEventListener('DOMContentLoaded', async function() {
     // Check if cart is empty
@@ -28,6 +29,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         alert('Payment system not configured. Please configure Stripe keys in .env file on server.');
         return;
     }
+    
+    // Initialize Apple Pay if available
+    await initializeApplePay();
     
     // Create Stripe card element
     const elements = stripe.elements();
@@ -67,6 +71,168 @@ document.addEventListener('DOMContentLoaded', async function() {
     // Setup form submission
     document.getElementById('checkoutForm').addEventListener('submit', handleCheckout);
 });
+
+// Initialize Apple Pay
+async function initializeApplePay() {
+    try {
+        // Calculate total with tax
+        const subtotal = getCartTotal();
+        const tax = subtotal * 0.13; // 13% HST for Canada
+        const total = subtotal + tax;
+        
+        // Create payment request
+        paymentRequest = stripe.paymentRequest({
+            country: 'CA',
+            currency: 'cad',
+            total: {
+                label: 'millo Purchase',
+                amount: Math.round(total * 100), // Convert to cents
+            },
+            requestPayerName: true,
+            requestPayerEmail: true,
+            requestShipping: true,
+            shippingOptions: [
+                {
+                    id: 'free-shipping',
+                    label: 'Free Shipping',
+                    detail: 'Arrives in 5-7 business days',
+                    amount: 0,
+                }
+            ],
+        });
+        
+        // Check if Apple Pay / Google Pay is available
+        const result = await paymentRequest.canMakePayment();
+        
+        if (result) {
+            // Show Apple Pay button
+            const applePayButton = document.getElementById('apple-pay-button');
+            const paymentDivider = document.getElementById('payment-divider');
+            
+            applePayButton.classList.remove('hidden');
+            paymentDivider.classList.remove('hidden');
+            
+            // Create and mount Apple Pay button
+            const elements = stripe.elements();
+            const prButton = elements.create('paymentRequestButton', {
+                paymentRequest: paymentRequest,
+                style: {
+                    paymentRequestButton: {
+                        type: 'buy', // or 'default', 'book', 'donate'
+                        theme: 'dark', // or 'light', 'light-outline'
+                        height: '48px',
+                    },
+                },
+            });
+            
+            // Check the availability of the Payment Request API
+            prButton.mount('#apple-pay-button');
+            
+            // Handle payment method received
+            paymentRequest.on('paymentmethod', async (ev) => {
+                await handleApplePayPayment(ev);
+            });
+            
+            console.log('✅ Apple Pay initialized successfully');
+        } else {
+            console.log('ℹ️ Apple Pay not available on this device/browser');
+        }
+    } catch (error) {
+        console.error('Apple Pay initialization error:', error);
+        // Don't show error to user - just silently disable Apple Pay
+    }
+}
+
+// Handle Apple Pay payment
+async function handleApplePayPayment(ev) {
+    try {
+        // Get shipping information from Apple Pay
+        const shippingAddress = ev.shippingAddress;
+        const customerName = ev.payerName || shippingAddress.recipient || 'Apple Pay Customer';
+        const customerEmail = ev.payerEmail || currentUser?.email || 'applepay@customer.com';
+        
+        // Format shipping address
+        const addressParts = [
+            shippingAddress.addressLine?.[0] || '',
+            shippingAddress.city || '',
+            shippingAddress.region || '',
+            shippingAddress.postalCode || '',
+            shippingAddress.country || 'CA'
+        ].filter(part => part);
+        const formattedAddress = addressParts.join(', ');
+        
+        // Calculate total with tax
+        const subtotal = getCartTotal();
+        const tax = subtotal * 0.13; // 13% HST for Canada
+        const total = subtotal + tax;
+        
+        // Create Payment Intent on the server
+        const paymentIntentResponse = await fetch('/api/create-payment-intent', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+                amount: total,
+                currency: 'cad',
+                payment_method_types: ['card'],
+                metadata: {
+                    customer_name: customerName,
+                    customer_email: customerEmail,
+                    shipping_address: formattedAddress,
+                    order_count: cart.length,
+                    payment_method: 'apple_pay'
+                }
+            })
+        });
+        
+        if (!paymentIntentResponse.ok) {
+            const errorData = await paymentIntentResponse.json();
+            ev.complete('fail');
+            throw new Error(errorData.error || 'Failed to create payment intent');
+        }
+        
+        const { clientSecret, paymentIntentId } = await paymentIntentResponse.json();
+        
+        // Confirm the payment with Stripe
+        const { error: confirmError, paymentIntent } = await stripe.confirmCardPayment(
+            clientSecret,
+            { payment_method: ev.paymentMethod.id },
+            { handleActions: false }
+        );
+        
+        if (confirmError) {
+            ev.complete('fail');
+            throw new Error(confirmError.message);
+        }
+        
+        // Verify payment was successful
+        if (paymentIntent.status !== 'succeeded') {
+            ev.complete('fail');
+            throw new Error('Payment was not successful. Status: ' + paymentIntent.status);
+        }
+        
+        // Payment successful! Complete Apple Pay UI
+        ev.complete('success');
+        
+        // Process orders
+        await processOrders(customerName, customerEmail, formattedAddress, paymentIntentId);
+        
+        // Clear cart
+        clearCart();
+        
+        // Show success and redirect
+        showNotification('Apple Pay payment successful! Order placed.', 'success');
+        setTimeout(() => {
+            window.location.href = 'order-success.html';
+        }, 1500);
+        
+    } catch (error) {
+        console.error('Apple Pay payment error:', error);
+        ev.complete('fail');
+        alert('Payment failed: ' + error.message);
+    }
+}
 
 // Display order summary
 function displayOrderSummary() {
