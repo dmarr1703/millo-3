@@ -35,13 +35,28 @@ function displayProducts() {
         return;
     }
     
-    grid.innerHTML = filteredProducts.map(product => `
-        <div class="product-card rounded-lg shadow-md overflow-hidden">
+    // Get current user to check ownership
+    const currentUser = JSON.parse(localStorage.getItem('milloUser') || '{}');
+    
+    grid.innerHTML = filteredProducts.map(product => {
+        const isOwner = currentUser.id === product.seller_id;
+        
+        return `
+        <div class="product-card rounded-lg shadow-md overflow-hidden relative">
             <div class="relative h-64 bg-gray-900">
                 <img src="${product.image_url}" alt="${product.name}" class="w-full h-full object-cover">
                 <span class="absolute top-2 right-2 px-3 py-1 bg-yellow-500 text-black text-sm rounded-full font-semibold">
                     ${product.category}
                 </span>
+                ${isOwner ? `
+                <button 
+                    onclick="deleteProduct('${product.id}', event)" 
+                    class="absolute top-2 left-2 w-8 h-8 bg-red-600 text-white rounded-full hover:bg-red-700 transition flex items-center justify-center shadow-lg"
+                    title="Delete product"
+                >
+                    <i class="fas fa-times"></i>
+                </button>
+                ` : ''}
             </div>
             <div class="p-4">
                 <h4 class="text-lg font-semibold text-white mb-2">${product.name}</h4>
@@ -65,7 +80,8 @@ function displayProducts() {
                 </div>
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 // Setup search and filter functionality
@@ -137,5 +153,53 @@ function getProductById(productId) {
     } catch (error) {
         console.error('Error fetching product:', error);
         return null;
+    }
+}
+
+// Delete product (only for product owner)
+async function deleteProduct(productId, event) {
+    event.stopPropagation();
+    event.preventDefault();
+    
+    const currentUser = JSON.parse(localStorage.getItem('milloUser') || '{}');
+    
+    if (!currentUser.id) {
+        alert('You must be logged in to delete products');
+        return;
+    }
+    
+    const product = MilloDB.getById('products', productId);
+    
+    if (!product) {
+        alert('Product not found');
+        return;
+    }
+    
+    if (product.seller_id !== currentUser.id && currentUser.role !== 'admin') {
+        alert('You can only delete your own products');
+        return;
+    }
+    
+    if (confirm(`Are you sure you want to delete "${product.name}"? This action cannot be undone.`)) {
+        try {
+            // Delete the product
+            MilloDB.delete('products', productId);
+            
+            // Delete associated subscription
+            const subscriptions = MilloDB.getAll('subscriptions');
+            const productSubscription = subscriptions.find(s => s.product_id === productId);
+            if (productSubscription) {
+                MilloDB.delete('subscriptions', productSubscription.id);
+            }
+            
+            // Show success notification
+            showNotification('Product deleted successfully', 'success');
+            
+            // Reload products
+            await loadProducts();
+        } catch (error) {
+            console.error('Error deleting product:', error);
+            alert('Failed to delete product. Please try again.');
+        }
     }
 }

@@ -183,39 +183,39 @@ function displayProducts() {
     }
     
     table.innerHTML = sellerProducts.map(product => `
-        <tr class="border-b hover:bg-gray-50">
+        <tr class="border-b border-gray-700 hover:bg-gray-800">
             <td class="px-6 py-4">
                 <div class="flex items-center space-x-3">
                     <img src="${product.image_url}" alt="${product.name}" class="w-12 h-12 object-cover rounded">
                     <div>
-                        <p class="font-semibold">${product.name}</p>
-                        <p class="text-sm text-gray-500">${product.category}</p>
+                        <p class="font-semibold text-gray-200">${product.name}</p>
+                        <p class="text-sm text-gray-400">${product.category}</p>
                     </div>
                 </div>
             </td>
-            <td class="px-6 py-4 font-semibold">$${product.price.toFixed(2)}</td>
-            <td class="px-6 py-4">${product.stock}</td>
+            <td class="px-6 py-4 font-semibold text-gray-200">$${product.price.toFixed(2)}</td>
+            <td class="px-6 py-4 text-gray-300">${product.stock}</td>
             <td class="px-6 py-4">
                 <div class="flex flex-wrap gap-1">
                     ${product.colors.slice(0, 3).map(color => `
-                        <span class="text-xs px-2 py-1 bg-gray-100 rounded">${color}</span>
+                        <span class="text-xs px-2 py-1 bg-gray-700 text-gray-200 rounded">${color}</span>
                     `).join('')}
-                    ${product.colors.length > 3 ? `<span class="text-xs px-2 py-1 bg-gray-100 rounded">+${product.colors.length - 3}</span>` : ''}
+                    ${product.colors.length > 3 ? `<span class="text-xs px-2 py-1 bg-gray-700 text-gray-200 rounded">+${product.colors.length - 3}</span>` : ''}
                 </div>
             </td>
             <td class="px-6 py-4">
-                <span class="text-xs px-2 py-1 rounded-full ${product.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                <span class="text-xs px-2 py-1 rounded-full ${product.status === 'active' ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}">
                     ${product.status}
                 </span>
             </td>
             <td class="px-6 py-4">
-                <button onclick="editProduct('${product.id}')" class="text-blue-600 hover:text-blue-800 mr-2" title="Edit">
+                <button onclick="editProduct('${product.id}')" class="text-blue-400 hover:text-blue-300 mr-2" title="Edit">
                     <i class="fas fa-edit"></i>
                 </button>
-                <button onclick="toggleProductStatus('${product.id}')" class="text-yellow-600 hover:text-yellow-800 mr-2" title="Toggle Status">
+                <button onclick="toggleProductStatus('${product.id}')" class="text-yellow-400 hover:text-yellow-300 mr-2" title="Toggle Status">
                     <i class="fas fa-toggle-on"></i>
                 </button>
-                <button onclick="deleteProduct('${product.id}')" class="text-red-600 hover:text-red-800" title="Delete">
+                <button onclick="deleteProduct('${product.id}')" class="text-red-400 hover:text-red-300" title="Delete">
                     <i class="fas fa-trash"></i>
                 </button>
             </td>
@@ -235,28 +235,28 @@ function displayOrders() {
     }
     
     table.innerHTML = sellerOrders.map(order => `
-        <tr class="border-b hover:bg-gray-50">
-            <td class="px-6 py-4 font-mono text-sm">${order.id.substr(-8)}</td>
+        <tr class="border-b border-gray-700 hover:bg-gray-800">
+            <td class="px-6 py-4 font-mono text-sm text-gray-300">${order.id.substr(-8)}</td>
             <td class="px-6 py-4">
                 <div>
-                    <p class="font-semibold">${order.customer_name}</p>
-                    <p class="text-sm text-gray-500">${order.customer_email}</p>
+                    <p class="font-semibold text-gray-200">${order.customer_name}</p>
+                    <p class="text-sm text-gray-400">${order.customer_email}</p>
                 </div>
             </td>
             <td class="px-6 py-4">
-                <p>${order.product_name}</p>
-                <p class="text-sm text-gray-500">Color: ${order.color}</p>
+                <p class="text-gray-200">${order.product_name}</p>
+                <p class="text-sm text-gray-400">Color: ${order.color}</p>
             </td>
-            <td class="px-6 py-4">${order.quantity}</td>
-            <td class="px-6 py-4 font-semibold">$${order.total.toFixed(2)}</td>
-            <td class="px-6 py-4 font-semibold text-green-600">$${order.seller_amount.toFixed(2)}</td>
+            <td class="px-6 py-4 text-gray-300">${order.quantity}</td>
+            <td class="px-6 py-4 font-semibold text-gray-200">$${order.total.toFixed(2)}</td>
+            <td class="px-6 py-4 font-semibold text-green-400">$${order.seller_amount.toFixed(2)}</td>
             <td class="px-6 py-4">
                 <span class="text-xs px-2 py-1 rounded-full ${getStatusColor(order.status)}">
                     ${order.status}
                 </span>
             </td>
             <td class="px-6 py-4">
-                <button onclick="updateOrderStatus('${order.id}')" class="text-blue-600 hover:text-blue-800" title="Update Status">
+                <button onclick="updateOrderStatus('${order.id}')" class="text-blue-400 hover:text-blue-300" title="Update Status">
                     <i class="fas fa-edit"></i>
                 </button>
             </td>
@@ -278,18 +278,18 @@ function displaySubscriptions() {
     table.innerHTML = sellerSubscriptions.map(sub => {
         const product = sellerProducts.find(p => p.id === sub.product_id);
         return `
-            <tr class="border-b hover:bg-gray-50">
-                <td class="px-6 py-4">${product ? product.name : 'Unknown Product'}</td>
-                <td class="px-6 py-4 font-semibold">$${sub.amount.toFixed(2)} CAD</td>
+            <tr class="border-b border-gray-700 hover:bg-gray-800">
+                <td class="px-6 py-4 text-gray-200">${product ? product.name : 'Unknown Product'}</td>
+                <td class="px-6 py-4 font-semibold text-gray-200">$${sub.amount.toFixed(2)} CAD</td>
                 <td class="px-6 py-4">
-                    <span class="text-xs px-2 py-1 rounded-full ${sub.status === 'active' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}">
+                    <span class="text-xs px-2 py-1 rounded-full ${sub.status === 'active' ? 'bg-green-900 text-green-300' : 'bg-red-900 text-red-300'}">
                         ${sub.status}
                     </span>
                 </td>
-                <td class="px-6 py-4">${new Date(sub.start_date).toLocaleDateString()}</td>
-                <td class="px-6 py-4">${new Date(sub.next_billing_date).toLocaleDateString()}</td>
+                <td class="px-6 py-4 text-gray-300">${new Date(sub.start_date).toLocaleDateString()}</td>
+                <td class="px-6 py-4 text-gray-300">${new Date(sub.next_billing_date).toLocaleDateString()}</td>
                 <td class="px-6 py-4">
-                    <button onclick="cancelSubscription('${sub.id}')" class="text-red-600 hover:text-red-800" title="Cancel">
+                    <button onclick="cancelSubscription('${sub.id}')" class="text-red-400 hover:text-red-300" title="Cancel">
                         <i class="fas fa-times-circle"></i> Cancel
                     </button>
                 </td>
@@ -301,14 +301,14 @@ function displaySubscriptions() {
 // Get status color class
 function getStatusColor(status) {
     const colors = {
-        'pending': 'bg-yellow-100 text-yellow-800',
-        'processing': 'bg-blue-100 text-blue-800',
-        'shipped': 'bg-purple-100 text-purple-800',
-        'delivered': 'bg-green-100 text-green-800',
-        'completed': 'bg-green-100 text-green-800',
-        'cancelled': 'bg-red-100 text-red-800'
+        'pending': 'bg-yellow-900 text-yellow-300',
+        'processing': 'bg-blue-900 text-blue-300',
+        'shipped': 'bg-purple-900 text-purple-300',
+        'delivered': 'bg-green-900 text-green-300',
+        'completed': 'bg-green-900 text-green-300',
+        'cancelled': 'bg-red-900 text-red-300'
     };
-    return colors[status] || 'bg-gray-100 text-gray-800';
+    return colors[status] || 'bg-gray-800 text-gray-300';
 }
 
 // Switch tabs
@@ -321,7 +321,7 @@ function switchTab(tabName) {
     // Remove active class from all tabs
     document.querySelectorAll('[id$="Tab"]').forEach(tab => {
         tab.classList.remove('border-purple-600', 'text-purple-600');
-        tab.classList.add('border-transparent', 'text-gray-600');
+        tab.classList.add('border-transparent', 'text-gray-400');
     });
     
     // Show selected tab content
