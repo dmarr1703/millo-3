@@ -11,6 +11,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     if (productId) {
         await loadProductDetail(productId);
+        // Initialize Stripe Buy Button
+        await initializeStripeBuyButton();
         // Initialize Apple Pay after product is loaded
         await initializeProductApplePay();
     } else {
@@ -87,6 +89,27 @@ function selectColor(color) {
 // Update selected color text
 function updateSelectedColorText() {
     document.getElementById('selectedColorText').textContent = `Selected: ${selectedColor}`;
+}
+
+// Initialize Stripe Buy Button for current product
+async function initializeStripeBuyButton() {
+    if (!currentProduct) {
+        console.error('No product loaded');
+        return;
+    }
+    
+    try {
+        // Get buy button ID for this product
+        const buyButtonId = getProductBuyButtonId(currentProduct);
+        
+        // Render the buy button
+        await renderStripeBuyButton('stripe-buy-button-container', buyButtonId);
+        
+        console.log('✅ Stripe Buy Button initialized for product:', currentProduct.name);
+    } catch (error) {
+        console.error('Failed to initialize Stripe Buy Button:', error);
+        // The fallback button is already visible
+    }
 }
 
 // Increase quantity
