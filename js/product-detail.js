@@ -41,13 +41,31 @@ async function loadProductDetail(productId) {
 
 // Display product details
 function displayProductDetail() {
-    document.getElementById('productImage').src = currentProduct.image_url;
+    // Handle multiple images or fallback to single image
+    const mainImage = currentProduct.images && currentProduct.images.length > 0 
+        ? currentProduct.images[0] 
+        : currentProduct.image_url;
+    
+    document.getElementById('productImage').src = mainImage;
     document.getElementById('productImage').alt = currentProduct.name;
     document.getElementById('productName').textContent = currentProduct.name;
     document.getElementById('productDescription').textContent = currentProduct.description;
     document.getElementById('productPrice').textContent = `$${currentProduct.price.toFixed(2)}`;
     document.getElementById('productCategory').textContent = currentProduct.category;
     document.getElementById('stockCount').textContent = currentProduct.stock;
+    
+    // Display image gallery if multiple images exist
+    if (currentProduct.images && currentProduct.images.length > 1) {
+        const imageGallery = document.getElementById('imageGallery');
+        if (imageGallery) {
+            imageGallery.innerHTML = currentProduct.images.map((img, index) => `
+                <img src="${img}" alt="${currentProduct.name} ${index + 1}" 
+                     class="w-20 h-20 object-cover rounded cursor-pointer hover:opacity-75 transition"
+                     onclick="changeMainImage('${img}')">
+            `).join('');
+            imageGallery.classList.remove('hidden');
+        }
+    }
     
     // Display color options
     const colorOptions = document.getElementById('colorOptions');
@@ -89,6 +107,11 @@ function selectColor(color) {
 // Update selected color text
 function updateSelectedColorText() {
     document.getElementById('selectedColorText').textContent = `Selected: ${selectedColor}`;
+}
+
+// Change main product image
+function changeMainImage(imageUrl) {
+    document.getElementById('productImage').src = imageUrl;
 }
 
 // Initialize Stripe Buy Button for current product

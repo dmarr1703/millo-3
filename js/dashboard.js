@@ -182,17 +182,22 @@ function displayProducts() {
         return;
     }
     
-    table.innerHTML = sellerProducts.map(product => `
+    table.innerHTML = sellerProducts.map(product => {
+        const mainImage = product.images && product.images.length > 0 
+            ? product.images[0] 
+            : product.image_url;
+        return `
         <tr class="border-b border-gray-700 hover:bg-gray-800">
             <td class="px-6 py-4">
                 <div class="flex items-center space-x-3">
-                    <img src="${product.image_url}" alt="${product.name}" class="w-12 h-12 object-cover rounded">
+                    <img src="${mainImage}" alt="${product.name}" class="w-12 h-12 object-cover rounded">
                     <div>
                         <p class="font-semibold text-gray-200">${product.name}</p>
                         <p class="text-sm text-gray-400">${product.category}</p>
+                        ${product.images && product.images.length > 1 ? `<p class="text-xs text-purple-400">+${product.images.length - 1} more</p>` : ''}
                     </div>
                 </div>
-            </td>
+            </td>`;
             <td class="px-6 py-4 font-semibold text-gray-200">$${product.price.toFixed(2)}</td>
             <td class="px-6 py-4 text-gray-300">${product.stock}</td>
             <td class="px-6 py-4">
@@ -220,7 +225,7 @@ function displayProducts() {
                 </button>
             </td>
         </tr>
-    `).join('');
+    `}).join('');
 }
 
 // Display orders table
@@ -344,7 +349,7 @@ function closeAddProductModal() {
     document.getElementById('addProductForm').reset();
 }
 
-// Handle add product with e-transfer payment
+// Handle add product with automatic Stripe subscription
 async function handleAddProduct(event) {
     event.preventDefault();
     
@@ -355,18 +360,22 @@ async function handleAddProduct(event) {
         const stock = parseInt(document.getElementById('productStock').value);
         const category = document.getElementById('productCategory').value;
         const colorsStr = document.getElementById('productColors').value;
-        const imageFileInput = document.getElementById('productImage');
+        const imageFileInput = document.getElementById('productImages'); // Changed to support multiple
         
         const colors = colorsStr.split(',').map(c => c.trim()).filter(c => c);
         
-        // Upload file first
-        let imageUrl = '';
-        if (imageFileInput.files && imageFileInput.files[0]) {
-            showNotification('Uploading file...', 'info');
+        // Upload multiple files
+        let imageUrls = [];
+        if (imageFileInput.files && imageFileInput.files.length > 0) {
+            showNotification('Uploading images...', 'info');
             const formData = new FormData();
-            formData.append('file', imageFileInput.files[0]);
             
-            const uploadResponse = await fetch('/api/upload-file', {
+            // Add all files to FormData
+            for (let i = 0; i < imageFileInput.files.length; i++) {
+                formData.append('images', imageFileInput.files[i]);
+            }
+            
+            const uploadResponse = await fetch('/api/upload-files', {
                 method: 'POST',
                 body: formData
             });
@@ -376,12 +385,12 @@ async function handleAddProduct(event) {
             }
             
             const uploadData = await uploadResponse.json();
-            imageUrl = uploadData.fileUrl;
+            imageUrls = uploadData.files.map(f => f.fileUrl);
         } else {
-            throw new Error('Please select a file');
+            throw new Error('Please select at least one image');
         }
         
-        // Create product and post it immediately as active
+        // Create product with pending subscription
         const newProduct = {
             id: 'prod-' + Date.now(),
             seller_id: seller.id,
@@ -389,58 +398,98 @@ async function handleAddProduct(event) {
             description: description,
             price: price,
             colors: colors,
-            image_url: imageUrl,
+            images: imageUrls, // Array of image URLs
+            image_url: imageUrls[0], // Keep backward compatibility
             category: category,
             stock: stock,
-            status: 'active', // Product is active immediately
-            subscription_status: 'active',
-            payment_confirmed: false, // Track payment separately
+            status: 'pending', // Pending until subscription payment
+            subscription_status: 'pending',
+            payment_confirmed: false,
+            stripe_buy_button_id: 'buy_btn_1ShurIRwc1RkBb2PfGHUskTz', // Default Stripe Buy Button ID
             created_at: new Date().toISOString()
         };
         
         // Save product
-        const productData = await fetch('/tables/products', {
+        const productResponse = await fetch('/tables/products', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(newProduct)
         });
         
-        if (!productData.ok) {
+        if (!productResponse.ok) {
             throw new Error('Failed to create product');
         }
         
-        const createdProduct = await productData.json();
+        const createdProduct = await productResponse.json();
         
-        // Create subscription record
-        const subscription = {
-            id: 'sub-' + Date.now(),
-            seller_id: seller.id,
-            product_id: createdProduct.id,
-            amount: 25,
-            status: 'active',
-            start_date: new Date().toISOString(),
-            next_billing_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-            created_at: new Date().toISOString()
-        };
+        // Create Stripe subscription for monthly charges
+        showNotification('Setting up monthly subscription...', 'info');
         
-        await fetch('/tables/subscriptions', {
+        const subscriptionResponse = await fetch('/api/create-subscription', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(subscription)
+            body: JSON.stringify({
+                seller_id: seller.id,
+                seller_email: seller.email,
+                product_id: createdProduct.id,
+                product_name: name,
+                amount: 25
+            })
         });
         
-        // Close the add product modal
+        if (!subscriptionResponse.ok) {
+            // If subscription fails, delete the product
+            await fetch('/tables/products/' + createdProduct.id, { method: 'DELETE' });
+            throw new Error('Failed to create subscription');
+        }
+        
+        const subscriptionData = await subscriptionResponse.json();
+        
+        // Close modal
         closeAddProductModal();
         
-        // Show success message with payment reminder
-        showNotification(
-            '✅ Product posted successfully!\n\n' +
-            '💳 PAYMENT REMINDER: Please send your monthly subscription payment of $25 CAD to d.marr@live.ca via e-transfer.\n\n' +
-            'Your product is now live on the marketplace!',
-            'success'
-        );
+        // Initialize Stripe for payment
+        if (stripePublishableKey && stripePublishableKey !== 'pk_test_placeholder') {
+            const stripe = Stripe(stripePublishableKey);
+            
+            // Show success message
+            showNotification('Redirecting to payment...', 'info');
+            
+            // Redirect to Stripe Checkout for subscription payment
+            const { error } = await stripe.confirmCardPayment(subscriptionData.clientSecret);
+            
+            if (error) {
+                throw new Error(error.message);
+            }
+            
+            // Payment successful, activate product
+            await fetch('/tables/products/' + createdProduct.id, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    status: 'active',
+                    subscription_status: 'active',
+                    payment_confirmed: true
+                })
+            });
+            
+            showNotification('✅ Product posted successfully! Monthly subscription active.', 'success');
+        } else {
+            // If Stripe is not configured, activate product anyway (for testing)
+            await fetch('/tables/products/' + createdProduct.id, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    status: 'active',
+                    subscription_status: 'active',
+                    payment_confirmed: true
+                })
+            });
+            
+            showNotification('✅ Product posted successfully! (Payment system in test mode)', 'success');
+        }
         
-        // Reload dashboard to show new product
+        // Reload dashboard
         setTimeout(() => {
             loadDashboardData();
         }, 2000);

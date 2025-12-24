@@ -44,7 +44,7 @@ function displayProducts() {
         return `
         <div class="product-card rounded-lg shadow-md overflow-hidden relative">
             <div class="relative h-64 bg-gray-900">
-                <img src="${product.image_url}" alt="${product.name}" class="w-full h-full object-cover">
+                <img src="${product.images && product.images.length > 0 ? product.images[0] : product.image_url}" alt="${product.name}" class="w-full h-full object-cover">
                 <span class="absolute top-2 right-2 px-3 py-1 bg-yellow-500 text-black text-sm rounded-full font-semibold">
                     ${product.category}
                 </span>

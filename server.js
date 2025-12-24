@@ -37,9 +37,12 @@ const upload = multer({
         }
     },
     limits: {
-        fileSize: 10 * 1024 * 1024 // 10MB limit
+        fileSize: 10 * 1024 * 1024 // 10MB limit per file
     }
 });
+
+// Multiple file upload middleware (up to 10 images)
+const multipleUpload = upload.array('images', 10);
 
 // Stripe configuration - using environment variable for security
 // Set your Stripe secret key as environment variable: STRIPE_SECRET_KEY
@@ -438,7 +441,7 @@ app.post('/api/send-order-notification', async (req, res) => {
     });
 });
 
-// File upload endpoint for product images/PDFs
+// Single file upload endpoint for product images/PDFs
 app.post('/api/upload-file', upload.single('file'), (req, res) => {
     try {
         if (!req.file) {
@@ -456,6 +459,32 @@ app.post('/api/upload-file', upload.single('file'), (req, res) => {
         });
     } catch (error) {
         console.error('File upload error:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Multiple file upload endpoint for product images
+app.post('/api/upload-files', multipleUpload, (req, res) => {
+    try {
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({ error: 'No files uploaded' });
+        }
+        
+        // Return array of file URLs
+        const fileUrls = req.files.map(file => ({
+            fileUrl: `/uploads/${file.filename}`,
+            filename: file.filename,
+            mimetype: file.mimetype,
+            size: file.size
+        }));
+        
+        res.json({
+            success: true,
+            files: fileUrls,
+            count: req.files.length
+        });
+    } catch (error) {
+        console.error('Multiple file upload error:', error);
         res.status(500).json({ error: error.message });
     }
 });
