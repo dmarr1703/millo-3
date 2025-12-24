@@ -10,10 +10,10 @@
  * 3. Call renderStripeBuyButton() to display the button
  */
 
-// Default Stripe publishable key - this can be updated with your live key
+// Stripe publishable key - LIVE KEY (for production use)
 const STRIPE_PUBLISHABLE_KEY = "pk_live_51Ndm3QRwc1RkBb2PSIWPn92BbDYkt33NLCly9ZDbrgtlyy57gzC8Q3K0ttC4D95MQOQA95fPPA03D9qGIXpGGkzH00Ih1IrhdK";
 
-// Default Buy Button ID - can be overridden per product
+// Stripe Buy Button ID - This is the payment buy button that handles purchases
 const DEFAULT_BUY_BUTTON_ID = "buy_btn_1ShurIRwc1RkBb2PfGHUskTz";
 
 /**
