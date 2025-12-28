@@ -179,7 +179,9 @@ const MilloDB = {
                     next_billing_date: '2024-04-15T00:00:00.000Z',
                     created_at: '2024-02-15T00:00:00.000Z'
                 }
-            ]
+            ],
+            withdrawals: [],
+            etransfer_payments: []
         };
 
         // Save each table to localStorage
@@ -284,7 +286,7 @@ const MilloDB = {
 
     // Clear all data (use with caution!)
     clearAll: function() {
-        const tables = ['users', 'products', 'orders', 'subscriptions'];
+        const tables = ['users', 'products', 'orders', 'subscriptions', 'withdrawals', 'etransfer_payments'];
         tables.forEach(table => {
             localStorage.removeItem(`millo_${table}`);
         });
