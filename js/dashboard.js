@@ -197,7 +197,7 @@ function displayProducts() {
                         ${product.images && product.images.length > 1 ? `<p class="text-xs text-purple-400">+${product.images.length - 1} more</p>` : ''}
                     </div>
                 </div>
-            </td>`;
+            </td>
             <td class="px-6 py-4 font-semibold text-gray-200">$${product.price.toFixed(2)}</td>
             <td class="px-6 py-4 text-gray-300">${product.stock}</td>
             <td class="px-6 py-4">
@@ -225,7 +225,8 @@ function displayProducts() {
                 </button>
             </td>
         </tr>
-    `}).join('');
+    `;
+    }).join('');
 }
 
 // Display orders table
