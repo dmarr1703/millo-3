@@ -417,10 +417,48 @@ async function loadOwnerEarnings() {
         document.getElementById('totalWithdrawn').textContent = `$${earnings.total_withdrawals.toFixed(2)}`;
         document.getElementById('subscriptionRevenue').textContent = `$${earnings.subscription_revenue.toFixed(2)}`;
         
+        // Load withdrawal history
+        await loadWithdrawalHistory();
+        
         return earnings;
     } catch (error) {
         console.error('Error loading earnings:', error);
         return null;
+    }
+}
+
+// Load withdrawal history
+async function loadWithdrawalHistory() {
+    try {
+        const response = await fetch('/tables/withdrawals');
+        const result = await response.json();
+        const withdrawals = result.data || [];
+        
+        const table = document.getElementById('withdrawalHistoryTable');
+        if (!table) return;
+        
+        if (withdrawals.length === 0) {
+            table.innerHTML = '<tr><td colspan="4" class="px-6 py-8 text-center text-gray-500">No withdrawals yet</td></tr>';
+            return;
+        }
+        
+        // Sort by date (newest first)
+        withdrawals.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        
+        table.innerHTML = withdrawals.map(withdrawal => `
+            <tr class="border-b hover:bg-gray-50">
+                <td class="px-6 py-4">${new Date(withdrawal.created_at).toLocaleString()}</td>
+                <td class="px-6 py-4 font-semibold text-green-600">$${withdrawal.amount.toFixed(2)} CAD</td>
+                <td class="px-6 py-4">
+                    <span class="text-xs px-3 py-1 rounded-full bg-green-100 text-green-800">
+                        ${withdrawal.status.toUpperCase()}
+                    </span>
+                </td>
+                <td class="px-6 py-4 font-mono text-sm text-gray-500">${withdrawal.id.substr(-12)}</td>
+            </tr>
+        `).join('');
+    } catch (error) {
+        console.error('Error loading withdrawal history:', error);
     }
 }
 
@@ -430,6 +468,11 @@ async function withdrawFunds() {
     
     if (isNaN(amount) || amount <= 0) {
         alert('Please enter a valid amount');
+        return;
+    }
+    
+    if (amount < 1) {
+        alert('Minimum withdrawal amount is $1.00 CAD');
         return;
     }
     
@@ -452,6 +495,8 @@ async function withdrawFunds() {
         
         showNotification(`Successfully withdrew $${amount.toFixed(2)}`, 'success');
         await loadOwnerEarnings();
+        await loadWithdrawalHistory();
+        await updateAnalytics();
     } catch (error) {
         console.error('Error withdrawing funds:', error);
         alert('Failed to process withdrawal');
@@ -795,5 +840,11 @@ document.addEventListener('DOMContentLoaded', async function() {
     const etransfersTab = document.getElementById('etransfersTab');
     if (etransfersTab) {
         etransfersTab.addEventListener('click', loadETransfers);
+    }
+    
+    // Load withdrawals when switching to that tab
+    const withdrawalsTab = document.getElementById('withdrawalsTab');
+    if (withdrawalsTab) {
+        withdrawalsTab.addEventListener('click', loadOwnerEarnings);
     }
 });
