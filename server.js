@@ -35,14 +35,12 @@ const upload = multer({
         } else {
             cb(new Error('Only PDF and image files are allowed!'), false);
         }
-    },
-    limits: {
-        fileSize: 10 * 1024 * 1024 // 10MB limit per file
     }
+    // No file size limits - unlimited upload
 });
 
-// Multiple file upload middleware (up to 10 images)
-const multipleUpload = upload.array('images', 10);
+// Multiple file upload middleware (unlimited images)
+const multipleUpload = upload.array('images');
 
 // Stripe configuration - using environment variable for security
 // Set your Stripe secret key as environment variable: STRIPE_SECRET_KEY

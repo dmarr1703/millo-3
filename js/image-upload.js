@@ -1,10 +1,12 @@
 // Image Upload Manager for millo
 // Handles image uploads, preview, storage, and management
+// Supports both server-side uploads (unlimited size) and localStorage fallback
 
 class ImageUploadManager {
     constructor() {
         this.currentImage = null;
         this.images = this.loadImages();
+        this.useServerUpload = true; // Use server-side upload by default
         this.init();
     }
 
@@ -73,6 +75,117 @@ class ImageUploadManager {
         // Show progress
         this.showProgress();
 
+        // Check if we should use server upload or localStorage
+        if (this.useServerUpload) {
+            await this.uploadToServer(files);
+        } else {
+            // Fallback to localStorage (for backwards compatibility)
+            await this.uploadToLocalStorage(files);
+        }
+
+        // Clear file input
+        document.getElementById('fileInput').value = '';
+    }
+
+    async uploadToServer(files) {
+        const formData = new FormData();
+        
+        // Add all files to form data
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            
+            // Validate file type
+            if (!file.type.startsWith('image/')) {
+                this.showStatus('error', `${file.name} is not a valid image file.`);
+                continue;
+            }
+            
+            formData.append('images', file);
+        }
+
+        try {
+            // Update progress
+            this.updateProgress(50, `Uploading ${files.length} file(s) to server...`);
+
+            // Upload to server with fetch
+            const response = await fetch('/api/upload-files', {
+                method: 'POST',
+                body: formData
+            });
+
+            if (!response.ok) {
+                throw new Error('Upload failed');
+            }
+
+            const result = await response.json();
+            
+            // Update progress
+            this.updateProgress(100, 'Processing uploaded images...');
+
+            // Save image metadata
+            const currentUser = JSON.parse(localStorage.getItem('currentUser'));
+            for (const fileInfo of result.files) {
+                // Create a full URL for the image
+                const imageURL = window.location.origin + fileInfo.fileUrl;
+                
+                // Load image to get dimensions
+                await this.loadImageDimensions(imageURL).then(dimensions => {
+                    const imageData = {
+                        id: Date.now() + Math.random().toString(36).substr(2, 9),
+                        name: fileInfo.filename,
+                        type: fileInfo.mimetype,
+                        size: fileInfo.size,
+                        width: dimensions.width,
+                        height: dimensions.height,
+                        dataURL: imageURL,
+                        serverPath: fileInfo.fileUrl,
+                        uploadDate: new Date().toISOString(),
+                        userId: currentUser.id,
+                        storageType: 'server'
+                    };
+                    
+                    this.saveImage(imageData);
+                }).catch(err => {
+                    console.error('Error loading image dimensions:', err);
+                    // Save without dimensions
+                    const imageData = {
+                        id: Date.now() + Math.random().toString(36).substr(2, 9),
+                        name: fileInfo.filename,
+                        type: fileInfo.mimetype,
+                        size: fileInfo.size,
+                        width: 0,
+                        height: 0,
+                        dataURL: imageURL,
+                        serverPath: fileInfo.fileUrl,
+                        uploadDate: new Date().toISOString(),
+                        userId: currentUser.id,
+                        storageType: 'server'
+                    };
+                    
+                    this.saveImage(imageData);
+                });
+            }
+
+            // Hide progress and show success
+            setTimeout(() => {
+                this.hideProgress();
+                this.showStatus('success', `Successfully uploaded ${result.count} image(s)!`);
+                this.displayGallery();
+            }, 500);
+
+        } catch (error) {
+            console.error('Server upload error:', error);
+            this.hideProgress();
+            this.showStatus('error', `Upload failed: ${error.message}. Falling back to localStorage...`);
+            
+            // Fallback to localStorage if server upload fails
+            this.useServerUpload = false;
+            await this.uploadToLocalStorage(files);
+            this.useServerUpload = true; // Reset for next upload
+        }
+    }
+
+    async uploadToLocalStorage(files) {
         // Process each file
         for (let i = 0; i < files.length; i++) {
             const file = files[i];
@@ -105,9 +218,17 @@ class ImageUploadManager {
 
         // Refresh gallery
         this.displayGallery();
-        
-        // Clear file input
-        document.getElementById('fileInput').value = '';
+    }
+
+    loadImageDimensions(url) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                resolve({ width: img.width, height: img.height });
+            };
+            img.onerror = reject;
+            img.src = url;
+        });
     }
 
     processImage(file) {
@@ -128,7 +249,8 @@ class ImageUploadManager {
                         height: img.height,
                         dataURL: e.target.result,
                         uploadDate: new Date().toISOString(),
-                        userId: JSON.parse(localStorage.getItem('currentUser')).id
+                        userId: JSON.parse(localStorage.getItem('currentUser')).id,
+                        storageType: 'localStorage'
                     };
 
                     // Save image

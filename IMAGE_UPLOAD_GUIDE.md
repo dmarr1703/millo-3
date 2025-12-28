@@ -11,7 +11,8 @@ The millo marketplace now includes a comprehensive image upload and management s
 - **File Browser** - Click "Browse Files" to select images from your file system
 - **Multiple Upload** - Upload multiple images at once
 - **All Formats Supported** - JPG, PNG, GIF, WebP, SVG, BMP, and more
-- **No Size Limits** - Upload high-resolution images of any size (note: very large files may take longer to process)
+- **UNLIMITED File Size** - Upload images of ANY size without restrictions! 100MB+ files supported
+- **Server-Side Storage** - Images stored on server for permanent access and reliability
 
 ### Image Management
 - **Gallery View** - All uploaded images displayed in a grid with thumbnails
@@ -126,11 +127,12 @@ For each uploaded image, the system displays:
 
 ### Storage Considerations
 
-- Images are stored in your browser's localStorage
-- Each browser/device has its own storage
-- Images persist even after closing the browser
-- Clearing browser data will remove uploaded images
-- For production, consider backend storage for large galleries
+- **Primary Storage**: Images are stored on the server in the `/uploads` directory
+- **No Size Limits**: Server-side storage handles files of any size
+- **Permanent Storage**: Images persist across browser sessions and devices
+- **Fallback Support**: Automatic fallback to localStorage if server is unavailable
+- **Multi-Device Access**: Access your images from any device when logged in
+- **Backup Recommended**: Regular server backups ensure your images are safe
 
 ## 🔧 Technical Details
 
@@ -149,8 +151,9 @@ For each uploaded image, the system displays:
 ### Performance
 - Small images (< 1MB): Instant upload
 - Medium images (1-5MB): Few seconds
-- Large images (5-10MB): 5-10 seconds
-- Very large images (> 10MB): May take longer, but no limit
+- Large images (5-20MB): 10-20 seconds
+- Very large images (20-100MB+): 30 seconds to few minutes depending on connection
+- **No size limit** - Upload files as large as you need!
 
 ### Data Structure
 Each image is stored with:
@@ -162,9 +165,11 @@ Each image is stored with:
   "size": 123456,
   "width": 1200,
   "height": 800,
-  "dataURL": "data:image/jpeg;base64,...",
+  "dataURL": "https://yourdomain.com/uploads/image-123.jpg",
+  "serverPath": "/uploads/image-123.jpg",
   "uploadDate": "2025-12-27T12:00:00.000Z",
-  "userId": "user-id"
+  "userId": "user-id",
+  "storageType": "server"
 }
 ```
 
@@ -212,12 +217,13 @@ The image upload system is fully responsive and works on mobile devices:
 
 ## 🔒 Security & Privacy
 
-- Images are stored locally in your browser
-- No images are sent to external servers
-- Only you can see your uploaded images (unless you're admin)
+- Images are stored securely on the server
+- Only authenticated sellers and admins can upload images
 - Images are tied to your user account
-- Logout doesn't delete images
-- Clearing browser data will remove images
+- Admins can view all uploaded images
+- Sellers can only view their own images
+- Images persist after logout for easy access
+- Server-side storage ensures images are backed up with database
 
 ## 🆘 Support
 
