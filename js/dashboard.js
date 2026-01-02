@@ -434,6 +434,12 @@ async function handleAddProduct(event) {
         
         const colors = colorsStr.split(',').map(c => c.trim()).filter(c => c);
         
+        // Validate inputs
+        if (!name || !description || !price || !stock || !category || colors.length === 0) {
+            showNotification('❌ Please fill in all required fields', 'error');
+            return;
+        }
+        
         // Validate images are selected
         if (!imageFileInput.files || imageFileInput.files.length === 0) {
             showNotification('❌ Please select at least one product image', 'error');
@@ -528,97 +534,12 @@ async function handleAddProduct(event) {
         
         const createdProduct = await productResponse.json();
         
-        // Create Stripe subscription for monthly charges
-        showNotification('Setting up monthly subscription...', 'info');
-        
-        const subscriptionResponse = await fetch('/api/create-subscription', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                seller_id: seller.id,
-                seller_email: seller.email,
-                product_id: createdProduct.id,
-                product_name: name,
-                amount: 25
-            })
-        });
-        
-        if (!subscriptionResponse.ok) {
-            // If subscription fails, delete the product
-            await fetch('/tables/products/' + createdProduct.id, { method: 'DELETE' });
-            throw new Error('Failed to create subscription');
-        }
-        
-        const subscriptionData = await subscriptionResponse.json();
-        
-        // Close modal first
+        // Close add product modal
         closeAddProductModal();
         
-        // Show immediate feedback
-        showNotification('🎉 Product created! Activating...', 'info');
-        
-        // Initialize Stripe for payment
-        if (stripePublishableKey && stripePublishableKey !== 'pk_test_placeholder') {
-            const stripe = Stripe(stripePublishableKey);
-            
-            // Show success message
-            showNotification('Redirecting to payment...', 'info');
-            
-            // Redirect to Stripe Checkout for subscription payment
-            const { error } = await stripe.confirmCardPayment(subscriptionData.clientSecret);
-            
-            if (error) {
-                throw new Error(error.message);
-            }
-            
-            // Payment successful, activate product
-            await fetch('/tables/products/' + createdProduct.id, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    status: 'active',
-                    subscription_status: 'active',
-                    payment_confirmed: true
-                })
-            });
-            
-            showNotification('✅ Product posted successfully! Monthly subscription active.', 'success');
-        } else {
-            // If Stripe is not configured, activate product anyway (for testing)
-            // Update product status locally first
-            MilloDB.update('products', createdProduct.id, {
-                status: 'active',
-                subscription_status: 'active',
-                payment_confirmed: true
-            });
-            
-            // Also update via API for consistency
-            await fetch('/tables/products/' + createdProduct.id, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    status: 'active',
-                    subscription_status: 'active',
-                    payment_confirmed: true
-                })
-            });
-            
-            // Create subscription record
-            const newSubscription = {
-                id: 'sub-' + Date.now(),
-                seller_id: seller.id,
-                product_id: createdProduct.id,
-                amount: 25,
-                status: 'active',
-                start_date: new Date().toISOString(),
-                next_billing_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
-                created_at: new Date().toISOString()
-            };
-            
-            MilloDB.create('subscriptions', newSubscription);
-            
-            showNotification('✅ Product posted successfully and is now LIVE on the main page!', 'success');
-        }
+        // Show e-transfer payment modal
+        showNotification('✅ Product created! Now complete the payment to activate it.', 'success');
+        showETransferModal(createdProduct);
         
         // Reload dashboard immediately to show the new product
         setTimeout(() => {
