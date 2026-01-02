@@ -348,6 +348,75 @@ function showAddProductModal() {
 function closeAddProductModal() {
     document.getElementById('addProductModal').classList.add('hidden');
     document.getElementById('addProductForm').reset();
+    // Clear image preview
+    const previewContainer = document.getElementById('imagePreview');
+    if (previewContainer) {
+        previewContainer.innerHTML = '';
+        previewContainer.classList.add('hidden');
+    }
+}
+
+// Preview selected images before upload
+function previewImages(input) {
+    const previewContainer = document.getElementById('imagePreview');
+    if (!previewContainer) return;
+    
+    // Clear previous previews
+    previewContainer.innerHTML = '';
+    
+    if (input.files && input.files.length > 0) {
+        previewContainer.classList.remove('hidden');
+        
+        // Validate and preview each file
+        const maxFileSize = 10 * 1024 * 1024; // 10MB
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        
+        Array.from(input.files).forEach((file, index) => {
+            const reader = new FileReader();
+            
+            // Create preview element
+            const previewDiv = document.createElement('div');
+            previewDiv.className = 'relative rounded-lg overflow-hidden border-2 border-gray-700';
+            
+            // Check file validity
+            const isValidType = allowedTypes.includes(file.type);
+            const isValidSize = file.size <= maxFileSize;
+            
+            reader.onload = function(e) {
+                const img = document.createElement('img');
+                img.src = e.target.result;
+                img.className = 'w-full h-24 object-cover';
+                previewDiv.appendChild(img);
+                
+                // Add file info overlay
+                const infoDiv = document.createElement('div');
+                infoDiv.className = 'absolute bottom-0 left-0 right-0 bg-black bg-opacity-70 p-1 text-xs text-white';
+                
+                if (!isValidType) {
+                    infoDiv.className += ' bg-red-600';
+                    infoDiv.innerHTML = '<i class="fas fa-exclamation-triangle mr-1"></i>Invalid type';
+                } else if (!isValidSize) {
+                    infoDiv.className += ' bg-red-600';
+                    infoDiv.innerHTML = '<i class="fas fa-exclamation-triangle mr-1"></i>Too large (' + (file.size / 1024 / 1024).toFixed(1) + 'MB)';
+                } else {
+                    infoDiv.innerHTML = '<i class="fas fa-check-circle text-green-400 mr-1"></i>' + (file.size / 1024).toFixed(0) + 'KB';
+                }
+                
+                previewDiv.appendChild(infoDiv);
+            };
+            
+            reader.readAsDataURL(file);
+            previewContainer.appendChild(previewDiv);
+        });
+        
+        // Show count
+        const countDiv = document.createElement('div');
+        countDiv.className = 'col-span-3 text-center text-sm text-gray-400 mt-2';
+        countDiv.innerHTML = '<i class="fas fa-images text-purple-400 mr-2"></i>' + input.files.length + ' image(s) selected';
+        previewContainer.appendChild(countDiv);
+    } else {
+        previewContainer.classList.add('hidden');
+    }
 }
 
 // Handle add product with automatic Stripe subscription
@@ -365,10 +434,36 @@ async function handleAddProduct(event) {
         
         const colors = colorsStr.split(',').map(c => c.trim()).filter(c => c);
         
+        // Validate images are selected
+        if (!imageFileInput.files || imageFileInput.files.length === 0) {
+            showNotification('❌ Please select at least one product image', 'error');
+            return;
+        }
+        
+        // Validate file types and sizes
+        const maxFileSize = 10 * 1024 * 1024; // 10MB per file
+        const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+        
+        for (let i = 0; i < imageFileInput.files.length; i++) {
+            const file = imageFileInput.files[i];
+            
+            // Check file type
+            if (!allowedTypes.includes(file.type)) {
+                showNotification(`❌ Invalid file type for "${file.name}". Please use JPG, PNG, GIF, or WebP images.`, 'error');
+                return;
+            }
+            
+            // Check file size
+            if (file.size > maxFileSize) {
+                showNotification(`❌ File "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(2)}MB). Maximum size is 10MB per file.`, 'error');
+                return;
+            }
+        }
+        
         // Upload multiple files
         let imageUrls = [];
-        if (imageFileInput.files && imageFileInput.files.length > 0) {
-            showNotification('Uploading images...', 'info');
+        try {
+            showNotification('📤 Uploading ' + imageFileInput.files.length + ' image(s)...', 'info');
             const formData = new FormData();
             
             // Add all files to FormData
@@ -382,13 +477,23 @@ async function handleAddProduct(event) {
             });
             
             if (!uploadResponse.ok) {
-                throw new Error('File upload failed');
+                const errorData = await uploadResponse.json().catch(() => ({ error: 'Upload failed' }));
+                throw new Error(errorData.error || 'File upload failed. Please try again.');
             }
             
             const uploadData = await uploadResponse.json();
+            
+            if (!uploadData.files || uploadData.files.length === 0) {
+                throw new Error('No files were uploaded. Please try again.');
+            }
+            
             imageUrls = uploadData.files.map(f => f.fileUrl);
-        } else {
-            throw new Error('Please select at least one image');
+            showNotification('✅ Images uploaded successfully!', 'success');
+            
+        } catch (uploadError) {
+            console.error('Image upload error:', uploadError);
+            showNotification('❌ Image upload failed: ' + uploadError.message, 'error');
+            return;
         }
         
         // Create product with pending subscription

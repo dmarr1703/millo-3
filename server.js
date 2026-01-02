@@ -462,29 +462,58 @@ app.post('/api/upload-file', upload.single('file'), (req, res) => {
 });
 
 // Multiple file upload endpoint for product images
-app.post('/api/upload-files', multipleUpload, (req, res) => {
-    try {
-        if (!req.files || req.files.length === 0) {
-            return res.status(400).json({ error: 'No files uploaded' });
+app.post('/api/upload-files', (req, res) => {
+    multipleUpload(req, res, function(err) {
+        if (err) {
+            console.error('Multer upload error:', err);
+            if (err instanceof multer.MulterError) {
+                // Multer-specific errors
+                if (err.code === 'LIMIT_FILE_SIZE') {
+                    return res.status(400).json({ 
+                        error: 'File too large. Maximum file size is 10MB per file.' 
+                    });
+                }
+                return res.status(400).json({ 
+                    error: `Upload error: ${err.message}` 
+                });
+            }
+            // Other errors
+            return res.status(400).json({ 
+                error: err.message || 'File upload failed. Please check file type and size.' 
+            });
         }
         
-        // Return array of file URLs
-        const fileUrls = req.files.map(file => ({
-            fileUrl: `/uploads/${file.filename}`,
-            filename: file.filename,
-            mimetype: file.mimetype,
-            size: file.size
-        }));
-        
-        res.json({
-            success: true,
-            files: fileUrls,
-            count: req.files.length
-        });
-    } catch (error) {
-        console.error('Multiple file upload error:', error);
-        res.status(500).json({ error: error.message });
-    }
+        try {
+            if (!req.files || req.files.length === 0) {
+                return res.status(400).json({ 
+                    error: 'No files uploaded. Please select at least one image file.' 
+                });
+            }
+            
+            // Return array of file URLs
+            const fileUrls = req.files.map(file => ({
+                fileUrl: `/uploads/${file.filename}`,
+                filename: file.filename,
+                originalName: file.originalname,
+                mimetype: file.mimetype,
+                size: file.size
+            }));
+            
+            console.log(`Successfully uploaded ${fileUrls.length} file(s)`);
+            
+            res.json({
+                success: true,
+                files: fileUrls,
+                count: req.files.length,
+                message: `Successfully uploaded ${req.files.length} image(s)`
+            });
+        } catch (error) {
+            console.error('File processing error:', error);
+            res.status(500).json({ 
+                error: 'Failed to process uploaded files. Please try again.' 
+            });
+        }
+    });
 });
 
 // RESTful API Routes
