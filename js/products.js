@@ -6,6 +6,11 @@ let filteredProducts = [];
 document.addEventListener('DOMContentLoaded', function() {
     loadProducts();
     setupFilters();
+    
+    // Auto-refresh products every 5 seconds to catch new additions
+    setInterval(() => {
+        loadProducts();
+    }, 5000);
 });
 
 // Load products from localStorage database
@@ -15,8 +20,15 @@ async function loadProducts() {
         const products = MilloDB.getAll('products');
         
         // Filter only active products with active subscriptions
+        const previousCount = allProducts.length;
         allProducts = products.filter(p => p.status === 'active' && p.subscription_status === 'active');
         filteredProducts = [...allProducts];
+        
+        // Show notification if new products were added
+        if (previousCount > 0 && allProducts.length > previousCount) {
+            const newCount = allProducts.length - previousCount;
+            console.log(`✨ ${newCount} new product(s) added to the marketplace!`);
+        }
         
         displayProducts();
     } catch (error) {
