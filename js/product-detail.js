@@ -59,9 +59,14 @@ function displayProductDetail() {
         const imageGallery = document.getElementById('imageGallery');
         if (imageGallery) {
             imageGallery.innerHTML = currentProduct.images.map((img, index) => `
-                <img src="${img}" alt="${currentProduct.name} ${index + 1}" 
-                     class="w-20 h-20 object-cover rounded cursor-pointer hover:opacity-75 transition"
-                     onclick="changeMainImage('${img}')">
+                <div class="relative rounded-lg overflow-hidden bg-gray-900">
+                    <img src="${img}" alt="${currentProduct.name} ${index + 1}" 
+                         class="gallery-thumbnail ${index === 0 ? 'active' : ''}" 
+                         id="thumbnail-${index}"
+                         onclick="changeMainImage('${img}', ${index})"
+                         loading="lazy"
+                         onerror="this.src='https://via.placeholder.com/80x80?text=Error'">
+                </div>
             `).join('');
             imageGallery.classList.remove('hidden');
         }
@@ -110,8 +115,20 @@ function updateSelectedColorText() {
 }
 
 // Change main product image
-function changeMainImage(imageUrl) {
+function changeMainImage(imageUrl, index) {
+    // Update main image
     document.getElementById('productImage').src = imageUrl;
+    
+    // Update active thumbnail
+    if (typeof index !== 'undefined') {
+        document.querySelectorAll('.gallery-thumbnail').forEach((thumb, i) => {
+            if (i === index) {
+                thumb.classList.add('active');
+            } else {
+                thumb.classList.remove('active');
+            }
+        });
+    }
 }
 
 // Initialize Stripe Buy Button for current product
