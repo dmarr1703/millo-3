@@ -551,8 +551,11 @@ async function handleAddProduct(event) {
         
         const subscriptionData = await subscriptionResponse.json();
         
-        // Close modal
+        // Close modal first
         closeAddProductModal();
+        
+        // Show immediate feedback
+        showNotification('🎉 Product created! Activating...', 'info');
         
         // Initialize Stripe for payment
         if (stripePublishableKey && stripePublishableKey !== 'pk_test_placeholder') {
@@ -582,6 +585,14 @@ async function handleAddProduct(event) {
             showNotification('✅ Product posted successfully! Monthly subscription active.', 'success');
         } else {
             // If Stripe is not configured, activate product anyway (for testing)
+            // Update product status locally first
+            MilloDB.update('products', createdProduct.id, {
+                status: 'active',
+                subscription_status: 'active',
+                payment_confirmed: true
+            });
+            
+            // Also update via API for consistency
             await fetch('/tables/products/' + createdProduct.id, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
@@ -592,13 +603,27 @@ async function handleAddProduct(event) {
                 })
             });
             
-            showNotification('✅ Product posted successfully! (Payment system in test mode)', 'success');
+            // Create subscription record
+            const newSubscription = {
+                id: 'sub-' + Date.now(),
+                seller_id: seller.id,
+                product_id: createdProduct.id,
+                amount: 25,
+                status: 'active',
+                start_date: new Date().toISOString(),
+                next_billing_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+                created_at: new Date().toISOString()
+            };
+            
+            MilloDB.create('subscriptions', newSubscription);
+            
+            showNotification('✅ Product posted successfully and is now LIVE on the main page!', 'success');
         }
         
-        // Reload dashboard
+        // Reload dashboard immediately to show the new product
         setTimeout(() => {
             loadDashboardData();
-        }, 2000);
+        }, 1500);
         
     } catch (error) {
         console.error('Error adding product:', error);
