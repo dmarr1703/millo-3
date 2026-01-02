@@ -40,14 +40,21 @@ function displayProducts() {
     
     grid.innerHTML = filteredProducts.map(product => {
         const isOwner = currentUser.id === product.seller_id;
+        const mainImage = product.images && product.images.length > 0 ? product.images[0] : product.image_url;
+        const imageCount = product.images && product.images.length > 1 ? product.images.length : 0;
         
         return `
-        <div class="product-card rounded-lg shadow-md overflow-hidden relative">
-            <div class="relative h-64 bg-gray-900">
-                <img src="${product.images && product.images.length > 0 ? product.images[0] : product.image_url}" alt="${product.name}" class="w-full h-full object-cover">
-                <span class="absolute top-2 right-2 px-3 py-1 bg-yellow-500 text-black text-sm rounded-full font-semibold">
+        <div class="product-card rounded-lg shadow-md overflow-hidden relative bg-gray-900">
+            <div class="product-image-container relative">
+                <img src="${mainImage}" alt="${product.name}" class="product-image" loading="lazy" onerror="this.src='https://via.placeholder.com/400x400?text=No+Image'">
+                <span class="absolute top-2 right-2 px-3 py-1 bg-yellow-500 text-black text-sm rounded-full font-semibold shadow-lg">
                     ${product.category}
                 </span>
+                ${imageCount > 0 ? `
+                <span class="absolute bottom-2 right-2 px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded-full font-semibold">
+                    <i class="fas fa-images"></i> ${imageCount + 1}
+                </span>
+                ` : ''}
                 ${isOwner ? `
                 <button 
                     onclick="deleteProduct('${product.id}', event)" 
