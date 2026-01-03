@@ -38,4 +38,5 @@ Thumbs.db
 millo-database.json
 
 # Uploads directory - product images and PDFs
-uploads/
+uploads/*
+!uploads/.gitkeep

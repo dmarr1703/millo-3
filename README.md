@@ -45,6 +45,25 @@ millo/
 
 ## 🚀 Quick Start
 
+### 🔴 IMPORTANT: Server Required for Full Functionality
+
+**The Node.js server MUST be running for:**
+- Product image uploads
+- File management
+- E-Transfer payment submissions
+- Email notifications (if configured)
+
+**Start the server:**
+```bash
+# Option 1: Use the startup script
+./start-server.sh
+
+# Option 2: Direct Node.js
+node server.js
+```
+
+The server will run on **http://localhost:3000**
+
 ### Demo Accounts
 
 The platform comes with pre-configured demo accounts:
@@ -61,30 +80,40 @@ The platform comes with pre-configured demo accounts:
 
 ### How to Use
 
-1. **Visit the Homepage** (`index.html`)
+1. **Start the Server** (REQUIRED)
+   ```bash
+   ./start-server.sh
+   # or
+   node server.js
+   ```
+
+2. **Visit the Homepage** (`http://localhost:3000/index.html`)
    - Browse products
    - Search and filter by category
    - View product details
    - Add items to cart
 
-2. **Sign Up/Login**
+3. **Sign Up/Login**
    - Click "Sign Up" to create a new account
    - Choose between Customer or Seller role
    - Login with existing credentials
 
-3. **For Sellers:**
-   - Access your dashboard at `dashboard.html`
-   - Add new products (automatic $25/month subscription)
+4. **For Sellers:**
+   - Access your dashboard at `http://localhost:3000/dashboard.html`
+   - Add new products (requires image upload - **server must be running**)
+   - Submit e-Transfer payment ($25/month per product)
    - Manage inventory and orders
    - Track earnings and subscriptions
+   - **📖 See [ADDING_PRODUCTS_GUIDE.md](ADDING_PRODUCTS_GUIDE.md) for detailed instructions**
 
-4. **For Admin/Owner:**
-   - Access admin dashboard at `admin.html`
+5. **For Admin/Owner:**
+   - Access admin dashboard at `http://localhost:3000/admin.html`
    - View platform analytics
    - Manage users and products
+   - Verify e-Transfer payments
    - Track 15% commission on all sales
 
-5. **Shopping:**
+6. **Shopping:**
    - Add products to cart
    - Proceed to checkout
    - Enter shipping information
