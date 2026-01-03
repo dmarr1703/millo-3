@@ -424,19 +424,39 @@ async function handleAddProduct(event) {
     event.preventDefault();
     
     try {
-        const name = document.getElementById('productName').value;
-        const description = document.getElementById('productDescription').value;
+        const name = document.getElementById('productName').value.trim();
+        const description = document.getElementById('productDescription').value.trim();
         const price = parseFloat(document.getElementById('productPrice').value);
         const stock = parseInt(document.getElementById('productStock').value);
         const category = document.getElementById('productCategory').value;
-        const colorsStr = document.getElementById('productColors').value;
+        const colorsStr = document.getElementById('productColors').value.trim();
         const imageFileInput = document.getElementById('productImages'); // Changed to support multiple
         
         const colors = colorsStr.split(',').map(c => c.trim()).filter(c => c);
         
-        // Validate inputs
-        if (!name || !description || !price || !stock || !category || colors.length === 0) {
-            showNotification('❌ Please fill in all required fields', 'error');
+        // Validate inputs with detailed error messages
+        if (!name) {
+            showNotification('❌ Product name is required', 'error');
+            return;
+        }
+        if (!description) {
+            showNotification('❌ Product description is required', 'error');
+            return;
+        }
+        if (!price || isNaN(price) || price <= 0) {
+            showNotification('❌ Valid price is required (must be greater than 0)', 'error');
+            return;
+        }
+        if (!stock || isNaN(stock) || stock < 0) {
+            showNotification('❌ Valid stock quantity is required (must be 0 or greater)', 'error');
+            return;
+        }
+        if (!category) {
+            showNotification('❌ Product category is required', 'error');
+            return;
+        }
+        if (colors.length === 0) {
+            showNotification('❌ At least one color is required', 'error');
             return;
         }
         
@@ -502,7 +522,7 @@ async function handleAddProduct(event) {
             return;
         }
         
-        // Create product with pending subscription
+        // Create product with all required information
         const newProduct = {
             id: 'prod-' + Date.now(),
             seller_id: seller.id,
@@ -520,6 +540,17 @@ async function handleAddProduct(event) {
             stripe_buy_button_id: 'buy_btn_1ShurIRwc1RkBb2PfGHUskTz', // Default Stripe Buy Button ID
             created_at: new Date().toISOString()
         };
+        
+        // Log product details for verification
+        console.log('Creating new product with details:', {
+            name: newProduct.name,
+            description: newProduct.description,
+            price: newProduct.price,
+            category: newProduct.category,
+            stock: newProduct.stock,
+            colors: newProduct.colors,
+            imageCount: newProduct.images.length
+        });
         
         // Save product
         const productResponse = await fetch('/tables/products', {
