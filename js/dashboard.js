@@ -534,9 +534,11 @@ async function handleAddProduct(event) {
             image_url: imageUrls[0], // Keep backward compatibility
             category: category,
             stock: stock,
-            status: 'pending', // Pending until subscription payment
-            subscription_status: 'pending',
-            payment_confirmed: false,
+            // Owner/admin gets products immediately activated — no payment required
+            status: (seller.is_owner || seller.payment_exempt || seller.role === 'admin') ? 'active' : 'pending',
+            subscription_status: (seller.is_owner || seller.payment_exempt || seller.role === 'admin') ? 'active' : 'pending',
+            payment_confirmed: !!(seller.is_owner || seller.payment_exempt || seller.role === 'admin'),
+            payment_exempt: !!(seller.is_owner || seller.payment_exempt || seller.role === 'admin'),
             stripe_buy_button_id: 'buy_btn_1ShurIRwc1RkBb2PfGHUskTz', // Default Stripe Buy Button ID
             created_at: new Date().toISOString()
         };
@@ -568,9 +570,25 @@ async function handleAddProduct(event) {
         // Close add product modal
         closeAddProductModal();
         
-        // Show e-transfer payment modal
-        showNotification('✅ Product created! Now complete the payment to activate it.', 'success');
-        showETransferModal(createdProduct);
+        // --- Owner / payment-exempt accounts get free product posting ---
+        if (seller.is_owner || seller.payment_exempt || seller.role === 'admin') {
+            // Immediately activate the product — no payment required
+            await fetch('/tables/products/' + createdProduct.id, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    status: 'active',
+                    subscription_status: 'active',
+                    payment_confirmed: true,
+                    payment_exempt: true
+                })
+            });
+            showNotification('✅ Product created and activated! (Owner – no payment required)', 'success');
+        } else {
+            // Regular sellers must pay the $25 CAD/month fee
+            showNotification('✅ Product created! Now complete the payment to activate it.', 'success');
+            showETransferModal(createdProduct);
+        }
         
         // Reload dashboard immediately to show the new product
         setTimeout(() => {

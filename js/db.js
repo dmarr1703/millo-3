@@ -23,6 +23,8 @@ const MilloDB = {
                     full_name: 'Admin Owner',
                     role: 'admin',
                     status: 'active',
+                    is_owner: true,         // Owner – free signup & free product posting
+                    payment_exempt: true,   // Skip the $25 CAD/month fee
                     created_at: '2024-01-01T00:00:00.000Z'
                 },
                 {

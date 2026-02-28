@@ -121,6 +121,14 @@ async function login(email, password) {
     }
 }
 
+// Owner email — this account gets free signup and free product posting
+const OWNER_EMAIL = 'owner@millo.com';
+
+// Check whether a user object belongs to the owner
+function isOwnerAccount(user) {
+    return user && (user.email === OWNER_EMAIL || user.is_owner === true || user.role === 'admin');
+}
+
 // Signup function
 async function signup(email, password, fullName, role) {
     try {
@@ -131,13 +139,18 @@ async function signup(email, password, fullName, role) {
             return;
         }
         
+        // Determine if this is the owner signing up (free, no payment required)
+        const isOwner = email.toLowerCase() === OWNER_EMAIL.toLowerCase();
+
         // Create new user
         const newUser = {
             email: email,
             password: password,
             full_name: fullName,
-            role: role,
-            status: 'active'
+            role: isOwner ? 'admin' : role,   // Owner always gets admin role
+            status: 'active',
+            is_owner: isOwner,                 // Flag for free posting privilege
+            payment_exempt: isOwner            // Skip $25 CAD fee
         };
         
         // Save to localStorage database
@@ -151,7 +164,9 @@ async function signup(email, password, fullName, role) {
         showNotification('Account created successfully!', 'success');
         
         // Redirect based on role
-        if (role === 'seller') {
+        if (isOwner) {
+            setTimeout(() => window.location.href = 'dashboard.html', 1000);
+        } else if (role === 'seller') {
             setTimeout(() => window.location.href = 'dashboard.html', 1000);
         }
     } catch (error) {

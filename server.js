@@ -69,6 +69,8 @@ let db = {
             full_name: 'Admin Owner',
             role: 'admin',
             status: 'active',
+            is_owner: true,       // Owner – free signup & free product posting
+            payment_exempt: true, // Skip the $25 CAD/month fee
             created_at: '2024-01-01T00:00:00.000Z'
         }
     ],
@@ -920,6 +922,9 @@ app.post('/api/confirm-subscription', async (req, res) => {
 });
 
 // E-transfer payment submission endpoint
+// Owner email — always exempt from the $25 CAD/month fee
+const OWNER_EMAIL = 'owner@millo.com';
+
 app.post('/api/etransfer/submit', async (req, res) => {
     try {
         const { 
@@ -932,34 +937,56 @@ app.post('/api/etransfer/submit', async (req, res) => {
             transfer_date 
         } = req.body;
         
-        if (!seller_id || !seller_email || !reference_number) {
-            return res.status(400).json({ error: 'Seller ID, email, and reference number are required' });
+        if (!seller_id || !seller_email) {
+            return res.status(400).json({ error: 'Seller ID and email are required' });
         }
-        
-        // Create e-transfer payment record (pending admin approval)
+
+        // --- Owner bypass: auto-approve without any payment ---
+        const isOwner = seller_email.toLowerCase() === OWNER_EMAIL.toLowerCase() ||
+                        db.users.some(u => u.id === seller_id && (u.is_owner || u.payment_exempt));
+
+        const now = new Date().toISOString();
         const etransferPayment = {
             id: generateId('etransfer'),
             seller_id: seller_id,
             seller_email: seller_email,
             product_id: product_id || 'pending',
             product_name: product_name || 'Product',
-            reference_number: reference_number,
-            amount: amount || 25,
+            reference_number: reference_number || 'OWNER-FREE',
+            amount: isOwner ? 0 : (amount || 25),
             currency: 'CAD',
-            transfer_date: transfer_date || new Date().toISOString(),
-            status: 'pending', // pending, approved, rejected
-            created_at: new Date().toISOString(),
-            approved_at: null,
-            approved_by: null
+            transfer_date: transfer_date || now,
+            status: isOwner ? 'approved' : 'pending',
+            created_at: now,
+            approved_at: isOwner ? now : null,
+            approved_by: isOwner ? 'system-owner-exempt' : null,
+            payment_exempt: isOwner
         };
         
         db.etransfer_payments.push(etransferPayment);
+
+        // If owner: immediately activate the product
+        if (isOwner && product_id) {
+            const productIndex = db.products.findIndex(p => p.id === product_id);
+            if (productIndex !== -1) {
+                db.products[productIndex] = {
+                    ...db.products[productIndex],
+                    status: 'active',
+                    subscription_status: 'active',
+                    payment_confirmed: true,
+                    payment_exempt: true
+                };
+            }
+        }
+
         saveDatabase();
         
         res.json({
             success: true,
             payment: etransferPayment,
-            message: 'E-transfer payment submitted successfully. Please wait for admin approval.'
+            message: isOwner
+                ? 'Owner account — product activated instantly, no payment required.'
+                : 'E-transfer payment submitted successfully. Please wait for admin approval.'
         });
         
     } catch (error) {
