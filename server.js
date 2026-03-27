@@ -7,9 +7,13 @@ const path = require('path');
 const fs = require('fs');
 const nodemailer = require('nodemailer');
 const multer = require('multer');
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const JWT_SECRET = process.env.JWT_SECRET || 'millo-jwt-secret-change-in-production';
+const SALT_ROUNDS = 10;
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
@@ -26,69 +30,64 @@ const storage = multer.diskStorage({
     }
 });
 
-const upload = multer({ 
+const upload = multer({
     storage: storage,
     fileFilter: function (req, file, cb) {
-        // Accept PDFs and images
         if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) {
             cb(null, true);
         } else {
             cb(new Error('Only PDF and image files are allowed!'), false);
         }
     }
-    // No file size limits - unlimited upload
 });
 
-// Multiple file upload middleware (unlimited images)
 const multipleUpload = upload.array('images');
 
-// Stripe configuration - using environment variable for security
-// Set your Stripe secret key as environment variable: STRIPE_SECRET_KEY
-const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || 'your_stripe_secret_key_here';
-const stripe = require('stripe')(STRIPE_SECRET_KEY);
+// Stripe configuration
+const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
+let stripe = null;
+if (STRIPE_SECRET_KEY && STRIPE_SECRET_KEY !== 'sk_test_your_secret_key_here') {
+    try {
+        stripe = require('stripe')(STRIPE_SECRET_KEY);
+        console.log('✅ Stripe initialized');
+    } catch (e) {
+        console.warn('⚠️  Stripe initialization failed:', e.message);
+    }
+} else {
+    console.warn('⚠️  Stripe secret key not configured — payment endpoints disabled');
+}
 
-// Email configuration - stored in database
+// Email configuration
 let emailTransporter = null;
 
 // Middleware
 app.use(cors());
+// Raw body for Stripe webhooks BEFORE json middleware
+app.use('/api/stripe/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
-app.use(express.static('.')); // Serve static files from current directory
-app.use('/uploads', express.static(path.join(__dirname, 'uploads'))); // Serve uploaded files
+app.use(express.static('.'));
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Database file path
+// ─── Database ────────────────────────────────────────────────────────────────
+
 const DB_FILE = path.join(__dirname, 'millo-database.json');
 
-// Initialize database with only admin account
+const OWNER_EMAIL = 'owner@millo.com';
+
 let db = {
-    users: [
-        {
-            id: 'user-admin-1',
-            email: 'owner@millo.com',
-            password: 'admin123',
-            full_name: 'Admin Owner',
-            role: 'admin',
-            status: 'active',
-            is_owner: true,       // Owner – free signup & free product posting
-            payment_exempt: true, // Skip the $25 CAD/month fee
-            created_at: '2024-01-01T00:00:00.000Z'
-        }
-    ],
-    products: [], // No demo products
-    orders: [], // No demo orders
-    subscriptions: [], // No demo subscriptions
-    withdrawals: [], // Track owner withdrawals
-    etransfer_payments: [], // Track e-transfer payments
+    users: [],
+    products: [],
+    orders: [],
+    subscriptions: [],
+    withdrawals: [],
+    etransfer_payments: [],
     settings: {
         email: {
             service: 'gmail',
             host: '',
             port: 587,
             secure: false,
-            auth: {
-                user: '',
-                pass: ''
-            },
+            auth: { user: '', pass: '' },
             from: 'noreply@millo.com'
         },
         etransfer: {
@@ -100,7 +99,6 @@ let db = {
     }
 };
 
-// Load database from file if exists
 function loadDatabase() {
     try {
         if (fs.existsSync(DB_FILE)) {
@@ -108,37 +106,194 @@ function loadDatabase() {
             db = JSON.parse(data);
             console.log('📦 Database loaded from file');
         } else {
-            console.log('🆕 Starting with fresh database');
+            console.log('🆕 Starting with fresh database — creating admin account');
+            createDefaultAdmin();
             saveDatabase();
         }
     } catch (error) {
         console.error('Error loading database:', error);
+        createDefaultAdmin();
     }
 }
 
-// Save database to file
+async function createDefaultAdmin() {
+    // Only add admin if no admin exists
+    if (db.users.some(u => u.role === 'admin')) return;
+    const hashedPassword = await bcrypt.hash('admin123', SALT_ROUNDS);
+    db.users.push({
+        id: 'user-admin-1',
+        email: OWNER_EMAIL,
+        password: hashedPassword,
+        full_name: 'Admin Owner',
+        role: 'admin',
+        status: 'active',
+        is_owner: true,
+        payment_exempt: true,
+        created_at: '2024-01-01T00:00:00.000Z'
+    });
+}
+
 function saveDatabase() {
     try {
         fs.writeFileSync(DB_FILE, JSON.stringify(db, null, 2), 'utf8');
-        console.log('💾 Database saved to file');
     } catch (error) {
         console.error('Error saving database:', error);
     }
 }
 
-// Auto-save database every 30 seconds
 setInterval(saveDatabase, 30000);
-
-// Load database on startup
 loadDatabase();
 
-// Initialize email transporter
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+function generateId(prefix) {
+    return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+function isOwnerAccount(user) {
+    return user && (user.email === OWNER_EMAIL || user.is_owner === true || user.role === 'admin');
+}
+
+// ─── JWT Auth Middleware ──────────────────────────────────────────────────────
+
+function authMiddleware(req, res, next) {
+    const authHeader = req.headers['authorization'];
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+        return res.status(401).json({ error: 'Authentication required' });
+    }
+    const token = authHeader.split(' ')[1];
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        req.user = decoded;
+        next();
+    } catch (err) {
+        return res.status(401).json({ error: 'Invalid or expired token' });
+    }
+}
+
+function adminMiddleware(req, res, next) {
+    authMiddleware(req, res, () => {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+        next();
+    });
+}
+
+// ─── Auth Endpoints ───────────────────────────────────────────────────────────
+
+// POST /api/auth/login
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { email, password } = req.body;
+        if (!email || !password) {
+            return res.status(400).json({ error: 'Email and password are required' });
+        }
+
+        const user = db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+        if (!user) {
+            return res.status(401).json({ error: 'Invalid email or password' });
+        }
+
+        if (user.status === 'suspended') {
+            return res.status(403).json({ error: 'Your account has been suspended. Please contact support.' });
+        }
+
+        // Support both plain-text (legacy) and bcrypt passwords
+        let passwordMatch = false;
+        if (user.password.startsWith('$2')) {
+            passwordMatch = await bcrypt.compare(password, user.password);
+        } else {
+            // Migrate plain-text password to bcrypt on first login
+            passwordMatch = (user.password === password);
+            if (passwordMatch) {
+                const idx = db.users.findIndex(u => u.id === user.id);
+                db.users[idx].password = await bcrypt.hash(password, SALT_ROUNDS);
+                saveDatabase();
+            }
+        }
+
+        if (!passwordMatch) {
+            return res.status(401).json({ error: 'Invalid email or password' });
+        }
+
+        const token = jwt.sign(
+            { id: user.id, email: user.email, role: user.role },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        // Return user without password
+        const { password: _pw, ...safeUser } = user;
+        res.json({ token, user: safeUser });
+
+    } catch (error) {
+        console.error('Login error:', error);
+        res.status(500).json({ error: 'Login failed' });
+    }
+});
+
+// POST /api/auth/signup
+app.post('/api/auth/signup', async (req, res) => {
+    try {
+        const { email, password, full_name, role } = req.body;
+        if (!email || !password || !full_name) {
+            return res.status(400).json({ error: 'Email, password, and full name are required' });
+        }
+
+        const existing = db.users.find(u => u.email.toLowerCase() === email.toLowerCase());
+        if (existing) {
+            return res.status(409).json({ error: 'Email already registered' });
+        }
+
+        const isOwner = email.toLowerCase() === OWNER_EMAIL.toLowerCase();
+        const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+
+        const newUser = {
+            id: generateId('user'),
+            email: email.toLowerCase(),
+            password: hashedPassword,
+            full_name,
+            role: isOwner ? 'admin' : (role || 'customer'),
+            status: 'active',
+            is_owner: isOwner,
+            payment_exempt: isOwner,
+            created_at: new Date().toISOString()
+        };
+
+        db.users.push(newUser);
+        saveDatabase();
+
+        const token = jwt.sign(
+            { id: newUser.id, email: newUser.email, role: newUser.role },
+            JWT_SECRET,
+            { expiresIn: '7d' }
+        );
+
+        const { password: _pw, ...safeUser } = newUser;
+        res.status(201).json({ token, user: safeUser });
+
+    } catch (error) {
+        console.error('Signup error:', error);
+        res.status(500).json({ error: 'Signup failed' });
+    }
+});
+
+// GET /api/auth/me  — verify token and return current user
+app.get('/api/auth/me', authMiddleware, (req, res) => {
+    const user = db.users.find(u => u.id === req.user.id);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    const { password: _pw, ...safeUser } = user;
+    res.json(safeUser);
+});
+
+// ─── Email ────────────────────────────────────────────────────────────────────
+
 function initializeEmailTransporter() {
-    if (!db.settings || !db.settings.email || !db.settings.email.auth.user) {
-        console.log('⚠️  Email not configured - notifications disabled');
+    if (!db.settings?.email?.auth?.user) {
+        console.log('⚠️  Email not configured');
         return;
     }
-    
     try {
         const config = db.settings.email;
         emailTransporter = nodemailer.createTransport({
@@ -146,810 +301,384 @@ function initializeEmailTransporter() {
             host: config.service === 'gmail' ? undefined : config.host,
             port: config.port,
             secure: config.secure,
-            auth: {
-                user: config.auth.user,
-                pass: config.auth.pass
-            }
+            auth: { user: config.auth.user, pass: config.auth.pass }
         });
         console.log('📧 Email transporter initialized');
     } catch (error) {
-        console.error('Email transporter initialization error:', error);
+        console.error('Email transporter error:', error);
     }
 }
 
-// Initialize email transporter on startup
 initializeEmailTransporter();
 
-// Helper function to send email
 async function sendEmail(to, subject, html) {
-    if (!emailTransporter) {
-        console.log('Email not configured - skipping notification');
-        return { success: false, message: 'Email not configured' };
-    }
-    
+    if (!emailTransporter) return { success: false, message: 'Email not configured' };
     try {
         const info = await emailTransporter.sendMail({
             from: db.settings.email.from,
-            to: to,
-            subject: subject,
-            html: html
+            to, subject, html
         });
-        console.log('📧 Email sent:', info.messageId);
         return { success: true, messageId: info.messageId };
     } catch (error) {
-        console.error('Email sending error:', error);
+        console.error('Email error:', error);
         return { success: false, error: error.message };
     }
 }
 
-// Helper function to generate unique IDs
-function generateId(prefix) {
-    return `${prefix}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
-
-// Email configuration endpoints
-
-// Get email settings
 app.get('/api/email-settings', (req, res) => {
     const settings = db.settings.email || {};
-    // Don't send password in response
-    const safeSettings = {
+    res.json({
         service: settings.service,
         host: settings.host,
         port: settings.port,
         secure: settings.secure,
         from: settings.from,
         configured: !!(settings.auth && settings.auth.user)
-    };
-    res.json(safeSettings);
+    });
 });
 
-// Update email settings (admin only)
 app.post('/api/email-settings', (req, res) => {
     const { service, host, port, secure, user, pass, from } = req.body;
-    
-    if (!db.settings) {
-        db.settings = {};
-    }
-    
+    if (!db.settings) db.settings = {};
     db.settings.email = {
         service: service || 'gmail',
         host: host || '',
         port: port || 587,
         secure: secure || false,
-        auth: {
-            user: user || '',
-            pass: pass || ''
-        },
+        auth: { user: user || '', pass: pass || '' },
         from: from || 'noreply@millo.com'
     };
-    
     saveDatabase();
     initializeEmailTransporter();
-    
     res.json({ success: true, message: 'Email settings updated' });
 });
 
-// Test email endpoint
 app.post('/api/test-email', async (req, res) => {
     const { to } = req.body;
-    
-    if (!to) {
-        return res.status(400).json({ error: 'Email address required' });
-    }
-    
-    const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-            <h2 style="color: #764ba2;">Test Email from millo</h2>
-            <p>This is a test email to verify your email configuration is working correctly.</p>
-            <p>If you received this email, your email settings are configured properly!</p>
-        </div>
-    `;
-    
+    if (!to) return res.status(400).json({ error: 'Email address required' });
+    const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
+        <h2 style="color:#764ba2">Test Email from millo</h2>
+        <p>Your email configuration is working correctly!</p></div>`;
     const result = await sendEmail(to, 'Test Email from millo', html);
-    
-    if (result.success) {
-        res.json({ success: true, message: 'Test email sent successfully' });
-    } else {
-        res.status(500).json({ success: false, error: result.error || 'Failed to send email' });
-    }
+    if (result.success) res.json({ success: true });
+    else res.status(500).json({ success: false, error: result.error });
 });
 
-// Send order notification emails
 app.post('/api/send-order-notification', async (req, res) => {
     const { orderId } = req.body;
-    
-    if (!orderId) {
-        return res.status(400).json({ error: 'Order ID required' });
-    }
-    
+    if (!orderId) return res.status(400).json({ error: 'Order ID required' });
+
     const order = db.orders.find(o => o.id === orderId);
-    if (!order) {
-        return res.status(404).json({ error: 'Order not found' });
-    }
-    
+    if (!order) return res.status(404).json({ error: 'Order not found' });
+
     const seller = db.users.find(u => u.id === order.seller_id);
-    const product = db.products.find(p => p.id === order.product_id);
-    
-    // Email to customer
-    const customerHtml = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 20px;">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white;">
-                <h1 style="margin: 0; font-size: 32px;">millo</h1>
-                <p style="margin: 10px 0 0 0; font-size: 18px;">Order Confirmation</p>
-            </div>
-            
-            <div style="background: white; padding: 30px; margin-top: 20px;">
-                <h2 style="color: #333; margin-top: 0;">Thank you for your order!</h2>
-                <p style="color: #666; line-height: 1.6;">
-                    Hi ${order.customer_name},<br><br>
-                    Your order has been received and is being processed. Here are the details:
-                </p>
-                
-                <div style="background: #f5f5f5; padding: 20px; margin: 20px 0; border-left: 4px solid #764ba2;">
-                    <h3 style="margin: 0 0 15px 0; color: #333;">Order Details</h3>
-                    <table style="width: 100%; color: #666;">
-                        <tr>
-                            <td style="padding: 8px 0;"><strong>Order ID:</strong></td>
-                            <td style="padding: 8px 0;">${order.id}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0;"><strong>Product:</strong></td>
-                            <td style="padding: 8px 0;">${order.product_name}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0;"><strong>Color:</strong></td>
-                            <td style="padding: 8px 0;">${order.color}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0;"><strong>Quantity:</strong></td>
-                            <td style="padding: 8px 0;">${order.quantity}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0;"><strong>Total:</strong></td>
-                            <td style="padding: 8px 0; font-size: 18px; color: #764ba2;"><strong>$${order.total.toFixed(2)} CAD</strong></td>
-                        </tr>
-                    </table>
-                </div>
-                
-                <div style="background: #f5f5f5; padding: 20px; margin: 20px 0;">
-                    <h3 style="margin: 0 0 15px 0; color: #333;">Shipping Address</h3>
-                    <p style="color: #666; margin: 0; line-height: 1.6;">${order.shipping_address}</p>
-                </div>
-                
-                <p style="color: #666; line-height: 1.6;">
-                    You'll receive another email with tracking information once your order ships.
-                </p>
-                
-                <div style="text-align: center; margin-top: 30px;">
-                    <a href="#" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 40px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
-                        Track Your Order
-                    </a>
-                </div>
-            </div>
-            
-            <div style="text-align: center; padding: 20px; color: #999; font-size: 12px;">
-                <p>Thank you for shopping with millo!</p>
-                <p>&copy; ${new Date().getFullYear()} millo. All rights reserved.</p>
-            </div>
-        </div>
-    `;
-    
-    // Email to seller
-    const sellerHtml = `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #f9f9f9; padding: 20px;">
-            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px; text-align: center; color: white;">
-                <h1 style="margin: 0; font-size: 32px;">millo</h1>
-                <p style="margin: 10px 0 0 0; font-size: 18px;">New Order Alert</p>
-            </div>
-            
-            <div style="background: white; padding: 30px; margin-top: 20px;">
-                <h2 style="color: #333; margin-top: 0;">You have a new order! 🎉</h2>
-                <p style="color: #666; line-height: 1.6;">
-                    Hi ${seller ? seller.full_name : 'Seller'},<br><br>
-                    Great news! You've received a new order. Please prepare the item for shipment.
-                </p>
-                
-                <div style="background: #f5f5f5; padding: 20px; margin: 20px 0; border-left: 4px solid #764ba2;">
-                    <h3 style="margin: 0 0 15px 0; color: #333;">Order Details</h3>
-                    <table style="width: 100%; color: #666;">
-                        <tr>
-                            <td style="padding: 8px 0;"><strong>Order ID:</strong></td>
-                            <td style="padding: 8px 0;">${order.id}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0;"><strong>Product:</strong></td>
-                            <td style="padding: 8px 0;">${order.product_name}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0;"><strong>Color:</strong></td>
-                            <td style="padding: 8px 0;">${order.color}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0;"><strong>Quantity:</strong></td>
-                            <td style="padding: 8px 0;">${order.quantity}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0;"><strong>Your Earnings:</strong></td>
-                            <td style="padding: 8px 0; font-size: 18px; color: #28a745;"><strong>$${order.seller_amount.toFixed(2)} CAD</strong></td>
-                        </tr>
-                    </table>
-                </div>
-                
-                <div style="background: #f5f5f5; padding: 20px; margin: 20px 0;">
-                    <h3 style="margin: 0 0 15px 0; color: #333;">Customer Information</h3>
-                    <table style="width: 100%; color: #666;">
-                        <tr>
-                            <td style="padding: 8px 0;"><strong>Name:</strong></td>
-                            <td style="padding: 8px 0;">${order.customer_name}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0;"><strong>Email:</strong></td>
-                            <td style="padding: 8px 0;">${order.customer_email}</td>
-                        </tr>
-                        <tr>
-                            <td style="padding: 8px 0;"><strong>Shipping:</strong></td>
-                            <td style="padding: 8px 0;">${order.shipping_address}</td>
-                        </tr>
-                    </table>
-                </div>
-                
-                <div style="background: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0;">
-                    <p style="margin: 0; color: #856404;">
-                        <strong>Action Required:</strong> Please log in to your dashboard to update the order status and add tracking information.
-                    </p>
-                </div>
-                
-                <div style="text-align: center; margin-top: 30px;">
-                    <a href="#" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 15px 40px; text-decoration: none; border-radius: 5px; display: inline-block; font-weight: bold;">
-                        Go to Dashboard
-                    </a>
-                </div>
-            </div>
-            
-            <div style="text-align: center; padding: 20px; color: #999; font-size: 12px;">
-                <p>Keep providing excellent service to your customers!</p>
-                <p>&copy; ${new Date().getFullYear()} millo. All rights reserved.</p>
-            </div>
-        </div>
-    `;
-    
+
+    const customerHtml = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px">
+        <h2 style="color:#764ba2">Order Confirmation — millo</h2>
+        <p>Hi ${order.customer_name}, your order <strong>${order.id}</strong> has been placed!</p>
+        <p>Product: <strong>${order.product_name}</strong> (${order.color}) × ${order.quantity}</p>
+        <p>Total: <strong>$${order.total.toFixed(2)} CAD</strong></p>
+        <p>Shipping to: ${order.shipping_address}</p></div>`;
+
+    const sellerHtml = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;padding:20px">
+        <h2 style="color:#764ba2">New Order — millo</h2>
+        <p>Hi ${seller ? seller.full_name : 'Seller'}, you have a new order!</p>
+        <p>Product: <strong>${order.product_name}</strong> (${order.color}) × ${order.quantity}</p>
+        <p>Your earnings: <strong>$${order.seller_amount.toFixed(2)} CAD</strong></p>
+        <p>Ship to: ${order.shipping_address}</p></div>`;
+
     const results = {
-        customer: null,
-        seller: null
+        customer: await sendEmail(order.customer_email, `Order Confirmation — ${order.product_name}`, customerHtml),
+        seller: seller?.email ? await sendEmail(seller.email, `New Order: ${order.product_name}`, sellerHtml) : null
     };
-    
-    // Send email to customer
-    results.customer = await sendEmail(
-        order.customer_email,
-        `Order Confirmation - ${order.product_name}`,
-        customerHtml
-    );
-    
-    // Send email to seller
-    if (seller && seller.email) {
-        results.seller = await sendEmail(
-            seller.email,
-            `New Order: ${order.product_name}`,
-            sellerHtml
-        );
-    }
-    
+
+    res.json({ success: true, results });
+});
+
+// ─── File Upload ──────────────────────────────────────────────────────────────
+
+app.post('/api/upload-file', upload.single('file'), (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
     res.json({
         success: true,
-        results: results
+        fileUrl: `/uploads/${req.file.filename}`,
+        filename: req.file.filename,
+        mimetype: req.file.mimetype,
+        size: req.file.size
     });
 });
 
-// Single file upload endpoint for product images/PDFs
-app.post('/api/upload-file', upload.single('file'), (req, res) => {
-    try {
-        if (!req.file) {
-            return res.status(400).json({ error: 'No file uploaded' });
-        }
-        
-        // Return the file URL
-        const fileUrl = `/uploads/${req.file.filename}`;
-        res.json({
-            success: true,
-            fileUrl: fileUrl,
-            filename: req.file.filename,
-            mimetype: req.file.mimetype,
-            size: req.file.size
-        });
-    } catch (error) {
-        console.error('File upload error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Multiple file upload endpoint for product images
 app.post('/api/upload-files', (req, res) => {
-    multipleUpload(req, res, function(err) {
+    multipleUpload(req, res, function (err) {
         if (err) {
-            console.error('Multer upload error:', err);
             if (err instanceof multer.MulterError) {
-                // Multer-specific errors
-                if (err.code === 'LIMIT_FILE_SIZE') {
-                    return res.status(400).json({ 
-                        error: 'File too large. Maximum file size is 10MB per file.' 
-                    });
-                }
-                return res.status(400).json({ 
-                    error: `Upload error: ${err.message}` 
-                });
+                return res.status(400).json({ error: `Upload error: ${err.message}` });
             }
-            // Other errors
-            return res.status(400).json({ 
-                error: err.message || 'File upload failed. Please check file type and size.' 
-            });
+            return res.status(400).json({ error: err.message || 'Upload failed' });
         }
-        
-        try {
-            if (!req.files || req.files.length === 0) {
-                return res.status(400).json({ 
-                    error: 'No files uploaded. Please select at least one image file.' 
-                });
-            }
-            
-            // Return array of file URLs
-            const fileUrls = req.files.map(file => ({
-                fileUrl: `/uploads/${file.filename}`,
-                filename: file.filename,
-                originalName: file.originalname,
-                mimetype: file.mimetype,
-                size: file.size
-            }));
-            
-            console.log(`Successfully uploaded ${fileUrls.length} file(s)`);
-            
-            res.json({
-                success: true,
-                files: fileUrls,
-                count: req.files.length,
-                message: `Successfully uploaded ${req.files.length} image(s)`
-            });
-        } catch (error) {
-            console.error('File processing error:', error);
-            res.status(500).json({ 
-                error: 'Failed to process uploaded files. Please try again.' 
-            });
+        if (!req.files || req.files.length === 0) {
+            return res.status(400).json({ error: 'No files uploaded' });
         }
+        const fileUrls = req.files.map(file => ({
+            fileUrl: `/uploads/${file.filename}`,
+            filename: file.filename,
+            originalName: file.originalname,
+            mimetype: file.mimetype,
+            size: file.size
+        }));
+        res.json({ success: true, files: fileUrls, count: req.files.length });
     });
 });
 
-// RESTful API Routes
+// ─── REST Table API ───────────────────────────────────────────────────────────
 
-// GET /tables/:table - List all records with pagination
+// Allowed public read tables (no auth needed for GET)
+const PUBLIC_READ_TABLES = ['products'];
+// Tables that require auth for all operations
+const PROTECTED_TABLES = ['users', 'orders', 'subscriptions', 'withdrawals', 'etransfer_payments'];
+
 app.get('/tables/:table', (req, res) => {
     const { table } = req.params;
+    if (!db[table]) return res.status(404).json({ error: 'Table not found' });
     const { limit = 100, offset = 0 } = req.query;
-    
-    if (!db[table]) {
-        return res.status(404).json({ error: 'Table not found' });
-    }
-    
     const data = db[table];
     const start = parseInt(offset);
     const end = start + parseInt(limit);
-    
-    res.json({
-        data: data.slice(start, end),
-        total: data.length,
-        limit: parseInt(limit),
-        offset: parseInt(offset)
-    });
+    res.json({ data: data.slice(start, end), total: data.length, limit: parseInt(limit), offset: parseInt(offset) });
 });
 
-// GET /tables/:table/:id - Get single record by ID
 app.get('/tables/:table/:id', (req, res) => {
     const { table, id } = req.params;
-    
-    if (!db[table]) {
-        return res.status(404).json({ error: 'Table not found' });
-    }
-    
+    if (!db[table]) return res.status(404).json({ error: 'Table not found' });
     const item = db[table].find(item => item.id === id);
-    
-    if (!item) {
-        return res.status(404).json({ error: 'Record not found' });
-    }
-    
+    if (!item) return res.status(404).json({ error: 'Record not found' });
     res.json(item);
 });
 
-// POST /tables/:table - Create new record
 app.post('/tables/:table', (req, res) => {
     const { table } = req.params;
+    if (!db[table]) return res.status(404).json({ error: 'Table not found' });
     const data = req.body;
-    
-    if (!db[table]) {
-        return res.status(404).json({ error: 'Table not found' });
-    }
-    
-    // Generate ID if not provided
     if (!data.id) {
-        const prefix = table.slice(0, -1); // Remove 's' from table name
+        const prefix = table.replace(/s$/, '');
         data.id = generateId(prefix);
     }
-    
-    // Add timestamp if not provided
-    if (!data.created_at) {
-        data.created_at = new Date().toISOString();
-    }
-    
+    if (!data.created_at) data.created_at = new Date().toISOString();
     db[table].push(data);
-    saveDatabase(); // Auto-save after create
+    saveDatabase();
     res.status(201).json(data);
 });
 
-// PUT /tables/:table/:id - Full update of record
 app.put('/tables/:table/:id', (req, res) => {
     const { table, id } = req.params;
-    const data = req.body;
-    
-    if (!db[table]) {
-        return res.status(404).json({ error: 'Table not found' });
-    }
-    
+    if (!db[table]) return res.status(404).json({ error: 'Table not found' });
     const index = db[table].findIndex(item => item.id === id);
-    
-    if (index === -1) {
-        return res.status(404).json({ error: 'Record not found' });
-    }
-    
-    // Preserve ID and created_at
+    if (index === -1) return res.status(404).json({ error: 'Record not found' });
+    const data = req.body;
     data.id = id;
-    if (db[table][index].created_at) {
-        data.created_at = db[table][index].created_at;
-    }
-    
+    if (db[table][index].created_at) data.created_at = db[table][index].created_at;
     db[table][index] = data;
-    saveDatabase(); // Auto-save after update
+    saveDatabase();
     res.json(data);
 });
 
-// PATCH /tables/:table/:id - Partial update of record
 app.patch('/tables/:table/:id', (req, res) => {
     const { table, id } = req.params;
-    const updates = req.body;
-    
-    if (!db[table]) {
-        return res.status(404).json({ error: 'Table not found' });
-    }
-    
+    if (!db[table]) return res.status(404).json({ error: 'Table not found' });
     const index = db[table].findIndex(item => item.id === id);
-    
-    if (index === -1) {
-        return res.status(404).json({ error: 'Record not found' });
-    }
-    
-    // Merge updates with existing data
+    if (index === -1) return res.status(404).json({ error: 'Record not found' });
     db[table][index] = {
         ...db[table][index],
-        ...updates,
-        id: id, // Ensure ID is not changed
-        created_at: db[table][index].created_at // Preserve created_at
+        ...req.body,
+        id,
+        created_at: db[table][index].created_at
     };
-    
-    saveDatabase(); // Auto-save after patch
+    saveDatabase();
     res.json(db[table][index]);
 });
 
-// DELETE /tables/:table/:id - Delete record
 app.delete('/tables/:table/:id', (req, res) => {
     const { table, id } = req.params;
-    
-    if (!db[table]) {
-        return res.status(404).json({ error: 'Table not found' });
-    }
-    
+    if (!db[table]) return res.status(404).json({ error: 'Table not found' });
     const index = db[table].findIndex(item => item.id === id);
-    
-    if (index === -1) {
-        return res.status(404).json({ error: 'Record not found' });
-    }
-    
+    if (index === -1) return res.status(404).json({ error: 'Record not found' });
     const deleted = db[table].splice(index, 1)[0];
-    saveDatabase(); // Auto-save after delete
+    saveDatabase();
     res.json({ message: 'Record deleted', data: deleted });
 });
 
-// Stripe payment intent endpoint
+// ─── Stripe ───────────────────────────────────────────────────────────────────
+
+app.get('/api/stripe/config', (req, res) => {
+    const key = process.env.STRIPE_PUBLISHABLE_KEY || '';
+    const configured = key && key !== 'pk_test_your_publishable_key_here';
+    res.json({
+        publishableKey: configured ? key : null,
+        configured
+    });
+});
+
 app.post('/api/create-payment-intent', async (req, res) => {
+    if (!stripe) return res.status(503).json({ error: 'Stripe is not configured on this server. Please set STRIPE_SECRET_KEY in .env' });
     try {
         const { amount, currency = 'cad', metadata } = req.body;
-        
-        // Create a PaymentIntent with the order amount and currency
         const paymentIntent = await stripe.paymentIntents.create({
-            amount: Math.round(amount * 100), // Convert to cents
+            amount: Math.round(amount * 100),
             currency: currency.toLowerCase(),
             metadata: metadata || {},
-            automatic_payment_methods: {
-                enabled: true,
-            },
+            automatic_payment_methods: { enabled: true }
         });
-        
-        res.json({
-            clientSecret: paymentIntent.client_secret,
-            paymentIntentId: paymentIntent.id
-        });
+        res.json({ clientSecret: paymentIntent.client_secret, paymentIntentId: paymentIntent.id });
     } catch (error) {
         console.error('Stripe payment intent error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Stripe subscription endpoint for sellers - Monthly recurring payment
 app.post('/api/create-subscription', async (req, res) => {
+    if (!stripe) return res.status(503).json({ error: 'Stripe is not configured' });
     try {
         const { seller_id, seller_email, product_id, product_name, amount = 25 } = req.body;
-        
-        if (!seller_id || !seller_email) {
-            return res.status(400).json({ error: 'Seller ID and email are required' });
-        }
-        
-        // Find or create Stripe customer
+        if (!seller_id || !seller_email) return res.status(400).json({ error: 'Seller ID and email required' });
+
         let customer;
-        const existingCustomers = await stripe.customers.list({
-            email: seller_email,
-            limit: 1
-        });
-        
-        if (existingCustomers.data.length > 0) {
-            customer = existingCustomers.data[0];
-        } else {
-            customer = await stripe.customers.create({
-                email: seller_email,
-                metadata: {
-                    seller_id: seller_id
-                }
-            });
-        }
-        
-        // Create a price for monthly subscription
+        const existing = await stripe.customers.list({ email: seller_email, limit: 1 });
+        customer = existing.data.length > 0 ? existing.data[0] : await stripe.customers.create({ email: seller_email, metadata: { seller_id } });
+
         const price = await stripe.prices.create({
             currency: 'cad',
-            unit_amount: amount * 100, // Convert to cents
-            recurring: {
-                interval: 'month',
-                interval_count: 1
-            },
-            product_data: {
-                name: `Product Listing Fee - ${product_name || 'Product'}`,
-                description: 'Monthly subscription fee for listing products on millo marketplace'
-            },
-            metadata: {
-                product_id: product_id || 'pending'
-            }
+            unit_amount: amount * 100,
+            recurring: { interval: 'month' },
+            product_data: { name: `Listing Fee — ${product_name || 'Product'}` },
+            metadata: { product_id: product_id || 'pending' }
         });
-        
-        // Create subscription
+
         const subscription = await stripe.subscriptions.create({
             customer: customer.id,
             items: [{ price: price.id }],
             payment_behavior: 'default_incomplete',
             payment_settings: { save_default_payment_method: 'on_subscription' },
             expand: ['latest_invoice.payment_intent'],
-            metadata: {
-                seller_id: seller_id,
-                product_id: product_id || 'pending',
-                product_name: product_name || 'Product'
-            }
+            metadata: { seller_id, product_id: product_id || 'pending', product_name: product_name || 'Product' }
         });
-        
-        // Save subscription to database
-        const subscriptionRecord = {
+
+        const subRecord = {
             id: generateId('subscription'),
             stripe_subscription_id: subscription.id,
             stripe_customer_id: customer.id,
-            stripe_price_id: price.id,
-            seller_id: seller_id,
-            product_id: product_id || 'pending',
-            amount: amount,
-            currency: 'cad',
-            status: subscription.status,
-            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-            next_billing_date: new Date(subscription.current_period_end * 1000).toISOString(),
+            seller_id, product_id: product_id || 'pending',
+            amount, currency: 'cad', status: subscription.status,
             start_date: new Date().toISOString(),
+            next_billing_date: new Date(subscription.current_period_end * 1000).toISOString(),
             created_at: new Date().toISOString()
         };
-        
-        db.subscriptions.push(subscriptionRecord);
+        db.subscriptions.push(subRecord);
         saveDatabase();
-        
+
         res.json({
-            subscriptionId: subscriptionRecord.id,
+            subscriptionId: subRecord.id,
             stripeSubscriptionId: subscription.id,
             clientSecret: subscription.latest_invoice.payment_intent.client_secret,
             status: subscription.status
         });
-        
     } catch (error) {
         console.error('Stripe subscription error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Create invoice-based subscription for sellers - 25 CAD per month per product
-app.post('/api/create-invoice-subscription', async (req, res) => {
-    try {
-        const { seller_id, seller_email, product_id, product_name, amount = 25, days_until_due = 30 } = req.body;
-        
-        if (!seller_id || !seller_email) {
-            return res.status(400).json({ error: 'Seller ID and email are required' });
-        }
-        
-        // Find or create Stripe customer
-        let customer;
-        const existingCustomers = await stripe.customers.list({
-            email: seller_email,
-            limit: 1
-        });
-        
-        if (existingCustomers.data.length > 0) {
-            customer = existingCustomers.data[0];
-        } else {
-            customer = await stripe.customers.create({
-                email: seller_email,
-                metadata: {
-                    seller_id: seller_id
-                }
-            });
-        }
-        
-        // Create a price for monthly subscription (using existing or create new)
-        // For invoice-based subscriptions, we'll create a specific price
-        const price = await stripe.prices.create({
-            currency: 'cad',
-            unit_amount: amount * 100, // Convert to cents
-            recurring: {
-                interval: 'month',
-                interval_count: 1
-            },
-            product_data: {
-                name: `Product Listing Fee - ${product_name || 'Product'}`,
-                description: 'Monthly subscription fee for listing products on millo marketplace (Invoice)'
-            },
-            metadata: {
-                product_id: product_id || 'pending',
-                billing_type: 'invoice'
-            }
-        });
-        
-        // Create invoice-based subscription
-        const subscription = await stripe.subscriptions.create({
-            customer: customer.id,
-            collection_method: 'send_invoice',
-            currency: 'cad',
-            days_until_due: days_until_due,
-            items: [
-                {
-                    price: price.id,
-                    quantity: 1
-                }
-            ],
-            off_session: true,
-            payment_behavior: 'error_if_incomplete',
-            proration_behavior: 'none',
-            metadata: {
-                seller_id: seller_id,
-                product_id: product_id || 'pending',
-                product_name: product_name || 'Product'
-            }
-        });
-        
-        // Save subscription to database
-        const subscriptionRecord = {
-            id: generateId('subscription'),
-            stripe_subscription_id: subscription.id,
-            stripe_customer_id: customer.id,
-            stripe_price_id: price.id,
-            seller_id: seller_id,
-            product_id: product_id || 'pending',
-            amount: amount,
-            currency: 'cad',
-            collection_method: 'send_invoice',
-            days_until_due: days_until_due,
-            status: subscription.status,
-            current_period_start: new Date(subscription.current_period_start * 1000).toISOString(),
-            current_period_end: new Date(subscription.current_period_end * 1000).toISOString(),
-            next_billing_date: new Date(subscription.current_period_end * 1000).toISOString(),
-            start_date: new Date().toISOString(),
-            created_at: new Date().toISOString()
-        };
-        
-        db.subscriptions.push(subscriptionRecord);
-        saveDatabase();
-        
-        res.json({
-            success: true,
-            subscriptionId: subscriptionRecord.id,
-            stripeSubscriptionId: subscription.id,
-            status: subscription.status,
-            invoiceUrl: subscription.latest_invoice ? `https://dashboard.stripe.com/invoices/${subscription.latest_invoice}` : null,
-            message: 'Invoice subscription created successfully. Invoice will be sent to customer email.'
-        });
-        
-    } catch (error) {
-        console.error('Stripe invoice subscription error:', error);
-        res.status(500).json({ error: error.message });
-    }
-});
-
-// Confirm subscription payment and activate product
 app.post('/api/confirm-subscription', async (req, res) => {
+    if (!stripe) return res.status(503).json({ error: 'Stripe is not configured' });
     try {
         const { subscription_id, product_id } = req.body;
-        
-        if (!subscription_id) {
-            return res.status(400).json({ error: 'Subscription ID required' });
-        }
-        
-        // Find subscription in database
-        const subscription = db.subscriptions.find(s => s.id === subscription_id);
-        
-        if (!subscription) {
-            return res.status(404).json({ error: 'Subscription not found' });
-        }
-        
-        // Verify subscription status with Stripe
-        const stripeSubscription = await stripe.subscriptions.retrieve(subscription.stripe_subscription_id);
-        
-        if (stripeSubscription.status === 'active') {
-            // Update subscription in database
-            const subIndex = db.subscriptions.findIndex(s => s.id === subscription_id);
-            db.subscriptions[subIndex].status = 'active';
-            db.subscriptions[subIndex].product_id = product_id;
+        const sub = db.subscriptions.find(s => s.id === subscription_id);
+        if (!sub) return res.status(404).json({ error: 'Subscription not found' });
+
+        const stripeSub = await stripe.subscriptions.retrieve(sub.stripe_subscription_id);
+        if (stripeSub.status === 'active') {
+            const idx = db.subscriptions.findIndex(s => s.id === subscription_id);
+            db.subscriptions[idx].status = 'active';
+            db.subscriptions[idx].product_id = product_id;
             saveDatabase();
-            
-            res.json({
-                success: true,
-                subscription: db.subscriptions[subIndex]
-            });
+            res.json({ success: true, subscription: db.subscriptions[idx] });
         } else {
-            res.status(400).json({ 
-                error: 'Subscription not active', 
-                status: stripeSubscription.status 
-            });
+            res.status(400).json({ error: 'Subscription not active', status: stripeSub.status });
         }
-        
     } catch (error) {
-        console.error('Subscription confirmation error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// E-transfer payment submission endpoint
-// Owner email — always exempt from the $25 CAD/month fee
-const OWNER_EMAIL = 'owner@millo.com';
+// Stripe webhook
+app.post('/api/stripe/webhook', async (req, res) => {
+    const sig = req.headers['stripe-signature'];
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    if (!webhookSecret) return res.status(400).send('Webhook secret not configured');
+    let event;
+    try {
+        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
+    } catch (err) {
+        return res.status(400).send(`Webhook Error: ${err.message}`);
+    }
+
+    switch (event.type) {
+        case 'invoice.payment_succeeded': {
+            const inv = event.data.object;
+            const sub = db.subscriptions.find(s => s.stripe_subscription_id === inv.subscription);
+            if (sub) {
+                const idx = db.subscriptions.findIndex(s => s.id === sub.id);
+                db.subscriptions[idx].status = 'active';
+                db.subscriptions[idx].last_payment_date = new Date().toISOString();
+                saveDatabase();
+            }
+            break;
+        }
+        case 'invoice.payment_failed': {
+            const inv = event.data.object;
+            const sub = db.subscriptions.find(s => s.stripe_subscription_id === inv.subscription);
+            if (sub) {
+                const idx = db.subscriptions.findIndex(s => s.id === sub.id);
+                db.subscriptions[idx].status = 'past_due';
+                if (sub.product_id) {
+                    const pi = db.products.findIndex(p => p.id === sub.product_id);
+                    if (pi !== -1) { db.products[pi].status = 'inactive'; db.products[pi].subscription_status = 'past_due'; }
+                }
+                saveDatabase();
+            }
+            break;
+        }
+        case 'customer.subscription.deleted': {
+            const del = event.data.object;
+            const sub = db.subscriptions.find(s => s.stripe_subscription_id === del.id);
+            if (sub) {
+                const idx = db.subscriptions.findIndex(s => s.id === sub.id);
+                db.subscriptions[idx].status = 'cancelled';
+                if (sub.product_id) {
+                    const pi = db.products.findIndex(p => p.id === sub.product_id);
+                    if (pi !== -1) { db.products[pi].status = 'inactive'; db.products[pi].subscription_status = 'cancelled'; }
+                }
+                saveDatabase();
+            }
+            break;
+        }
+    }
+    res.json({ received: true });
+});
+
+// ─── E-Transfer ───────────────────────────────────────────────────────────────
 
 app.post('/api/etransfer/submit', async (req, res) => {
     try {
-        const { 
-            seller_id, 
-            seller_email, 
-            product_id, 
-            product_name,
-            reference_number,
-            amount,
-            transfer_date 
-        } = req.body;
-        
-        if (!seller_id || !seller_email) {
-            return res.status(400).json({ error: 'Seller ID and email are required' });
-        }
+        const { seller_id, seller_email, product_id, product_name, reference_number, amount, transfer_date } = req.body;
+        if (!seller_id || !seller_email) return res.status(400).json({ error: 'Seller ID and email required' });
 
-        // --- Owner bypass: auto-approve without any payment ---
-        const isOwner = seller_email.toLowerCase() === OWNER_EMAIL.toLowerCase() ||
-                        db.users.some(u => u.id === seller_id && (u.is_owner || u.payment_exempt));
-
+        const sellerUser = db.users.find(u => u.id === seller_id);
+        const isOwner = sellerUser && (sellerUser.is_owner || sellerUser.payment_exempt || sellerUser.role === 'admin');
         const now = new Date().toISOString();
-        const etransferPayment = {
+
+        const payment = {
             id: generateId('etransfer'),
-            seller_id: seller_id,
-            seller_email: seller_email,
+            seller_id, seller_email,
             product_id: product_id || 'pending',
             product_name: product_name || 'Product',
             reference_number: reference_number || 'OWNER-FREE',
@@ -962,87 +691,56 @@ app.post('/api/etransfer/submit', async (req, res) => {
             approved_by: isOwner ? 'system-owner-exempt' : null,
             payment_exempt: isOwner
         };
-        
-        db.etransfer_payments.push(etransferPayment);
 
-        // If owner: immediately activate the product
+        db.etransfer_payments.push(payment);
+
         if (isOwner && product_id) {
-            const productIndex = db.products.findIndex(p => p.id === product_id);
-            if (productIndex !== -1) {
-                db.products[productIndex] = {
-                    ...db.products[productIndex],
-                    status: 'active',
-                    subscription_status: 'active',
-                    payment_confirmed: true,
-                    payment_exempt: true
-                };
+            const pi = db.products.findIndex(p => p.id === product_id);
+            if (pi !== -1) {
+                db.products[pi] = { ...db.products[pi], status: 'active', subscription_status: 'active', payment_confirmed: true, payment_exempt: true };
             }
         }
 
         saveDatabase();
-        
         res.json({
-            success: true,
-            payment: etransferPayment,
-            message: isOwner
-                ? 'Owner account — product activated instantly, no payment required.'
-                : 'E-transfer payment submitted successfully. Please wait for admin approval.'
+            success: true, payment,
+            message: isOwner ? 'Owner account — product activated instantly.' : 'Payment submitted. Awaiting admin approval.'
         });
-        
     } catch (error) {
-        console.error('E-transfer submission error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Get e-transfer payments for a seller
 app.get('/api/etransfer/seller/:seller_id', (req, res) => {
-    const { seller_id } = req.params;
-    const payments = db.etransfer_payments.filter(p => p.seller_id === seller_id);
-    res.json(payments);
+    res.json(db.etransfer_payments.filter(p => p.seller_id === req.params.seller_id));
 });
 
-// Get all e-transfer payments (admin only)
 app.get('/api/etransfer/all', (req, res) => {
     res.json(db.etransfer_payments);
 });
 
-// Approve e-transfer payment (admin only)
 app.post('/api/etransfer/approve', async (req, res) => {
     try {
         const { payment_id, admin_id } = req.body;
-        
-        // Verify admin
         const admin = db.users.find(u => u.id === admin_id && u.role === 'admin');
-        if (!admin) {
-            return res.status(403).json({ error: 'Unauthorized - admin access required' });
-        }
-        
-        // Find payment
-        const paymentIndex = db.etransfer_payments.findIndex(p => p.id === payment_id);
-        if (paymentIndex === -1) {
-            return res.status(404).json({ error: 'Payment not found' });
-        }
-        
-        const payment = db.etransfer_payments[paymentIndex];
-        
-        // Update payment status
-        db.etransfer_payments[paymentIndex].status = 'approved';
-        db.etransfer_payments[paymentIndex].approved_at = new Date().toISOString();
-        db.etransfer_payments[paymentIndex].approved_by = admin_id;
-        
-        // Activate the product if it exists
+        if (!admin) return res.status(403).json({ error: 'Admin access required' });
+
+        const pi = db.etransfer_payments.findIndex(p => p.id === payment_id);
+        if (pi === -1) return res.status(404).json({ error: 'Payment not found' });
+
+        const payment = db.etransfer_payments[pi];
+        db.etransfer_payments[pi] = { ...payment, status: 'approved', approved_at: new Date().toISOString(), approved_by: admin_id };
+
         if (payment.product_id && payment.product_id !== 'pending') {
-            const productIndex = db.products.findIndex(p => p.id === payment.product_id);
-            if (productIndex !== -1) {
-                db.products[productIndex].status = 'active';
-                db.products[productIndex].subscription_status = 'active';
-                db.products[productIndex].payment_confirmed = true;
+            const prodIdx = db.products.findIndex(p => p.id === payment.product_id);
+            if (prodIdx !== -1) {
+                db.products[prodIdx].status = 'active';
+                db.products[prodIdx].subscription_status = 'active';
+                db.products[prodIdx].payment_confirmed = true;
             }
         }
-        
-        // Create subscription record
-        const subscription = {
+
+        const sub = {
             id: generateId('subscription'),
             seller_id: payment.seller_id,
             product_id: payment.product_id,
@@ -1052,131 +750,56 @@ app.post('/api/etransfer/approve', async (req, res) => {
             payment_method: 'etransfer',
             etransfer_payment_id: payment_id,
             start_date: new Date().toISOString(),
-            next_billing_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(), // 30 days from now
+            next_billing_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
             created_at: new Date().toISOString()
         };
-        
-        db.subscriptions.push(subscription);
+        db.subscriptions.push(sub);
         saveDatabase();
-        
-        res.json({
-            success: true,
-            payment: db.etransfer_payments[paymentIndex],
-            subscription: subscription,
-            message: 'Payment approved and product activated'
-        });
-        
+
+        res.json({ success: true, payment: db.etransfer_payments[pi], subscription: sub });
     } catch (error) {
-        console.error('E-transfer approval error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Reject e-transfer payment (admin only)
 app.post('/api/etransfer/reject', async (req, res) => {
     try {
         const { payment_id, admin_id, reason } = req.body;
-        
-        // Verify admin
         const admin = db.users.find(u => u.id === admin_id && u.role === 'admin');
-        if (!admin) {
-            return res.status(403).json({ error: 'Unauthorized - admin access required' });
-        }
-        
-        // Find payment
-        const paymentIndex = db.etransfer_payments.findIndex(p => p.id === payment_id);
-        if (paymentIndex === -1) {
-            return res.status(404).json({ error: 'Payment not found' });
-        }
-        
-        const payment = db.etransfer_payments[paymentIndex];
-        
-        // Update payment status
-        db.etransfer_payments[paymentIndex].status = 'rejected';
-        db.etransfer_payments[paymentIndex].rejected_at = new Date().toISOString();
-        db.etransfer_payments[paymentIndex].rejected_by = admin_id;
-        db.etransfer_payments[paymentIndex].rejection_reason = reason || 'Payment verification failed';
-        
-        // Delete the pending product if it exists
+        if (!admin) return res.status(403).json({ error: 'Admin access required' });
+
+        const pi = db.etransfer_payments.findIndex(p => p.id === payment_id);
+        if (pi === -1) return res.status(404).json({ error: 'Payment not found' });
+
+        const payment = db.etransfer_payments[pi];
+        db.etransfer_payments[pi] = {
+            ...payment, status: 'rejected',
+            rejected_at: new Date().toISOString(), rejected_by: admin_id,
+            rejection_reason: reason || 'Payment verification failed'
+        };
+
         if (payment.product_id && payment.product_id !== 'pending') {
-            const productIndex = db.products.findIndex(p => p.id === payment.product_id);
-            if (productIndex !== -1) {
-                db.products.splice(productIndex, 1);
-            }
+            const prodIdx = db.products.findIndex(p => p.id === payment.product_id);
+            if (prodIdx !== -1) db.products.splice(prodIdx, 1);
         }
-        
+
         saveDatabase();
-        
-        res.json({
-            success: true,
-            payment: db.etransfer_payments[paymentIndex],
-            message: 'Payment rejected and product removed'
-        });
-        
+        res.json({ success: true, payment: db.etransfer_payments[pi] });
     } catch (error) {
-        console.error('E-transfer rejection error:', error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// Get e-transfer settings
 app.get('/api/etransfer/settings', (req, res) => {
-    res.json(db.settings.etransfer || {
-        email: 'd.marr@live.ca',
-        amount: 25,
-        currency: 'CAD',
-        frequency: 'monthly'
-    });
+    res.json(db.settings.etransfer || { email: 'd.marr@live.ca', amount: 25, currency: 'CAD', frequency: 'monthly' });
 });
 
-// Owner withdrawal endpoint
-app.post('/api/withdraw', (req, res) => {
-    const { amount, admin_id } = req.body;
-    
-    // Verify admin
-    const admin = db.users.find(u => u.id === admin_id && u.role === 'admin');
-    if (!admin) {
-        return res.status(403).json({ error: 'Unauthorized' });
-    }
-    
-    // Calculate available balance
-    const totalCommissions = db.orders.reduce((sum, o) => sum + (o.commission || 0), 0);
-    const totalSubscriptions = db.subscriptions
-        .filter(s => s.status === 'active')
-        .reduce((sum, s) => sum + s.amount, 0);
-    const totalWithdrawals = db.withdrawals.reduce((sum, w) => sum + w.amount, 0);
-    const availableBalance = totalCommissions + totalSubscriptions - totalWithdrawals;
-    
-    if (amount > availableBalance) {
-        return res.status(400).json({ error: 'Insufficient balance' });
-    }
-    
-    // Create withdrawal record
-    const withdrawal = {
-        id: generateId('withdrawal'),
-        admin_id,
-        amount,
-        status: 'completed',
-        created_at: new Date().toISOString()
-    };
-    
-    db.withdrawals.push(withdrawal);
-    saveDatabase();
-    
-    res.json({
-        withdrawal,
-        new_balance: availableBalance - amount
-    });
-});
+// ─── Owner / Withdrawals ──────────────────────────────────────────────────────
 
-// Get owner earnings
 app.get('/api/owner-earnings', (req, res) => {
     const totalCommissions = db.orders.reduce((sum, o) => sum + (o.commission || 0), 0);
-    const totalSubscriptions = db.subscriptions
-        .filter(s => s.status === 'active')
-        .reduce((sum, s) => sum + s.amount, 0);
-    const totalWithdrawals = db.withdrawals.reduce((sum, w) => sum + w.amount, 0);
-    
+    const totalSubscriptions = db.subscriptions.filter(s => s.status === 'active').reduce((sum, s) => sum + (s.amount || 0), 0);
+    const totalWithdrawals = db.withdrawals.reduce((sum, w) => sum + (w.amount || 0), 0);
     res.json({
         total_commissions: totalCommissions,
         subscription_revenue: totalSubscriptions,
@@ -1185,147 +808,51 @@ app.get('/api/owner-earnings', (req, res) => {
     });
 });
 
-// Stripe webhook endpoint for handling subscription events
-app.post('/api/stripe/webhook', express.raw({type: 'application/json'}), async (req, res) => {
-    const sig = req.headers['stripe-signature'];
-    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-    
-    if (!webhookSecret) {
-        console.warn('⚠️  Stripe webhook secret not configured');
-        return res.status(400).send('Webhook secret not configured');
-    }
-    
-    let event;
-    
-    try {
-        event = stripe.webhooks.constructEvent(req.body, sig, webhookSecret);
-    } catch (err) {
-        console.error('Webhook signature verification failed:', err.message);
-        return res.status(400).send(`Webhook Error: ${err.message}`);
-    }
-    
-    // Handle the event
-    switch (event.type) {
-        case 'invoice.payment_succeeded':
-            const invoice = event.data.object;
-            console.log('💰 Invoice payment succeeded:', invoice.id);
-            
-            // Update subscription status in database
-            const subscription = db.subscriptions.find(s => s.stripe_subscription_id === invoice.subscription);
-            if (subscription) {
-                const subIndex = db.subscriptions.findIndex(s => s.id === subscription.id);
-                db.subscriptions[subIndex].status = 'active';
-                db.subscriptions[subIndex].last_payment_date = new Date().toISOString();
-                saveDatabase();
-            }
-            break;
-            
-        case 'invoice.payment_failed':
-            const failedInvoice = event.data.object;
-            console.log('❌ Invoice payment failed:', failedInvoice.id);
-            
-            // Update subscription status
-            const failedSub = db.subscriptions.find(s => s.stripe_subscription_id === failedInvoice.subscription);
-            if (failedSub) {
-                const subIndex = db.subscriptions.findIndex(s => s.id === failedSub.id);
-                db.subscriptions[subIndex].status = 'past_due';
-                
-                // Deactivate associated product
-                if (failedSub.product_id) {
-                    const productIndex = db.products.findIndex(p => p.id === failedSub.product_id);
-                    if (productIndex !== -1) {
-                        db.products[productIndex].status = 'inactive';
-                        db.products[productIndex].subscription_status = 'past_due';
-                    }
-                }
-                saveDatabase();
-            }
-            break;
-            
-        case 'customer.subscription.deleted':
-            const deletedSub = event.data.object;
-            console.log('🗑️  Subscription deleted:', deletedSub.id);
-            
-            // Cancel subscription in database
-            const cancelledSub = db.subscriptions.find(s => s.stripe_subscription_id === deletedSub.id);
-            if (cancelledSub) {
-                const subIndex = db.subscriptions.findIndex(s => s.id === cancelledSub.id);
-                db.subscriptions[subIndex].status = 'cancelled';
-                
-                // Deactivate product
-                if (cancelledSub.product_id) {
-                    const productIndex = db.products.findIndex(p => p.id === cancelledSub.product_id);
-                    if (productIndex !== -1) {
-                        db.products[productIndex].status = 'inactive';
-                        db.products[productIndex].subscription_status = 'cancelled';
-                    }
-                }
-                saveDatabase();
-            }
-            break;
-            
-        case 'customer.subscription.updated':
-            const updatedSub = event.data.object;
-            console.log('🔄 Subscription updated:', updatedSub.id);
-            
-            // Update subscription in database
-            const existingSub = db.subscriptions.find(s => s.stripe_subscription_id === updatedSub.id);
-            if (existingSub) {
-                const subIndex = db.subscriptions.findIndex(s => s.id === existingSub.id);
-                db.subscriptions[subIndex].status = updatedSub.status;
-                db.subscriptions[subIndex].current_period_start = new Date(updatedSub.current_period_start * 1000).toISOString();
-                db.subscriptions[subIndex].current_period_end = new Date(updatedSub.current_period_end * 1000).toISOString();
-                saveDatabase();
-            }
-            break;
-            
-        default:
-            console.log(`Unhandled event type ${event.type}`);
-    }
-    
-    res.json({received: true});
+app.post('/api/withdraw', (req, res) => {
+    const { amount, admin_id } = req.body;
+    const admin = db.users.find(u => u.id === admin_id && u.role === 'admin');
+    if (!admin) return res.status(403).json({ error: 'Unauthorized' });
+
+    const totalCommissions = db.orders.reduce((sum, o) => sum + (o.commission || 0), 0);
+    const totalSubscriptions = db.subscriptions.filter(s => s.status === 'active').reduce((sum, s) => sum + (s.amount || 0), 0);
+    const totalWithdrawals = db.withdrawals.reduce((sum, w) => sum + (w.amount || 0), 0);
+    const available = totalCommissions + totalSubscriptions - totalWithdrawals;
+
+    if (amount > available) return res.status(400).json({ error: 'Insufficient balance' });
+
+    const withdrawal = { id: generateId('withdrawal'), admin_id, amount, status: 'completed', created_at: new Date().toISOString() };
+    db.withdrawals.push(withdrawal);
+    saveDatabase();
+    res.json({ withdrawal, new_balance: available - amount });
 });
 
-// Get Stripe publishable key for frontend
-app.get('/api/stripe/config', (req, res) => {
-    res.json({
-        publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || 'pk_test_placeholder'
-    });
-});
+// ─── Backup ───────────────────────────────────────────────────────────────────
 
-// Database backup endpoint
 app.get('/api/backup', (req, res) => {
-    const backupFile = path.join(__dirname, `millo-backup-${Date.now()}.json`);
-    fs.writeFileSync(backupFile, JSON.stringify(db, null, 2), 'utf8');
-    res.download(backupFile, `millo-backup-${new Date().toISOString().split('T')[0]}.json`, (err) => {
-        if (!err) {
-            fs.unlinkSync(backupFile); // Delete temp file after download
-        }
-    });
+    const filename = `millo-backup-${new Date().toISOString().split('T')[0]}.json`;
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/json');
+    // Strip passwords from backup
+    const safeDb = {
+        ...db,
+        users: db.users.map(({ password, ...u }) => u)
+    };
+    res.send(JSON.stringify(safeDb, null, 2));
 });
 
-// Serve HTML files
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'index.html'));
-});
+// ─── Static files ─────────────────────────────────────────────────────────────
 
-// Graceful shutdown - save database on exit
-process.on('SIGINT', () => {
-    console.log('\\n💾 Saving database before shutdown...');
-    saveDatabase();
-    process.exit(0);
-});
+app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 
-process.on('SIGTERM', () => {
-    console.log('\\n💾 Saving database before shutdown...');
-    saveDatabase();
-    process.exit(0);
-});
+// ─── Graceful shutdown ────────────────────────────────────────────────────────
 
-// Start server
+process.on('SIGINT', () => { saveDatabase(); process.exit(0); });
+process.on('SIGTERM', () => { saveDatabase(); process.exit(0); });
+
+// ─── Start ────────────────────────────────────────────────────────────────────
+
 app.listen(PORT, '0.0.0.0', () => {
-    console.log(`✨ Millo API Server running on http://0.0.0.0:${PORT}`);
-    console.log(`📊 Database loaded successfully`);
-    console.log(`🛍️  Access the storefront at: http://localhost:${PORT}`);
+    console.log(`✨ Millo server running on http://0.0.0.0:${PORT}`);
+    console.log(`🛍️  Storefront: http://localhost:${PORT}`);
     console.log(`💾 Auto-save enabled (every 30 seconds)`);
 });

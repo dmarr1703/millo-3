@@ -2,12 +2,12 @@
 let currentUser = null;
 let isLoginMode = true;
 
-// Initialize auth on page load
-document.addEventListener('DOMContentLoaded', function() {
+// ── Initialise ────────────────────────────────────────────────────────────────
+
+document.addEventListener('DOMContentLoaded', function () {
     checkAuthStatus();
 });
 
-// Check if user is logged in
 function checkAuthStatus() {
     const userData = localStorage.getItem('milloUser');
     if (userData) {
@@ -16,14 +16,17 @@ function checkAuthStatus() {
     }
 }
 
-// Update UI when user is logged in
 function updateUIForLoggedInUser() {
-    document.getElementById('authButtons').classList.add('hidden');
-    document.getElementById('userMenu').classList.remove('hidden');
-    document.getElementById('userName').textContent = currentUser.full_name;
+    const authButtons = document.getElementById('authButtons');
+    const userMenu = document.getElementById('userMenu');
+    const userName = document.getElementById('userName');
+    if (authButtons) authButtons.classList.add('hidden');
+    if (userMenu) userMenu.classList.remove('hidden');
+    if (userName) userName.textContent = currentUser.full_name;
 }
 
-// Show login modal
+// ── Modal helpers ─────────────────────────────────────────────────────────────
+
 function showLogin() {
     isLoginMode = true;
     document.getElementById('authTitle').textContent = 'Login';
@@ -34,223 +37,157 @@ function showLogin() {
     document.getElementById('authModal').classList.remove('hidden');
 }
 
-// Show signup modal
 function showSignup() {
     isLoginMode = false;
     document.getElementById('authTitle').textContent = 'Sign Up';
     document.getElementById('nameField').classList.remove('hidden');
     document.getElementById('roleField').classList.remove('hidden');
     document.getElementById('authButtonText').textContent = 'Sign Up';
-    document.getElementById('authToggle').textContent = "Already have an account? Login";
+    document.getElementById('authToggle').textContent = 'Already have an account? Login';
     document.getElementById('authModal').classList.remove('hidden');
 }
 
-// Show signup as seller
 function showSignupAsSeller() {
     closeSellerModal();
     showSignup();
-    document.getElementById('role').value = 'seller';
+    const roleEl = document.getElementById('role');
+    if (roleEl) roleEl.value = 'seller';
 }
 
-// Toggle between login and signup
 function toggleAuthMode() {
-    if (isLoginMode) {
-        showSignup();
-    } else {
-        showLogin();
-    }
+    if (isLoginMode) showSignup(); else showLogin();
 }
 
-// Close auth modal
 function closeAuthModal() {
     document.getElementById('authModal').classList.add('hidden');
     document.getElementById('authForm').reset();
 }
 
-// Handle authentication (login/signup)
+// ── Auth handlers ─────────────────────────────────────────────────────────────
+
 async function handleAuth(event) {
     event.preventDefault();
-    
-    const email = document.getElementById('email').value;
+    const email = document.getElementById('email').value.trim();
     const password = document.getElementById('password').value;
-    
     if (isLoginMode) {
         await login(email, password);
     } else {
-        const fullName = document.getElementById('fullName').value;
+        const fullName = document.getElementById('fullName').value.trim();
         const role = document.getElementById('role').value;
         await signup(email, password, fullName, role);
     }
 }
 
-// Login function
 async function login(email, password) {
     try {
-        // Get users from localStorage database
-        const users = MilloDB.getAll('users');
-        
-        // Find user with matching credentials
-        const user = users.find(u => u.email === email && u.password === password);
-        
-        if (user) {
-            if (user.status === 'suspended') {
-                alert('Your account has been suspended. Please contact support.');
-                return;
-            }
-            
-            currentUser = user;
-            localStorage.setItem('milloUser', JSON.stringify(user));
-            updateUIForLoggedInUser();
-            closeAuthModal();
-            
-            // Show success message
-            showNotification('Login successful!', 'success');
-            
-            // Redirect based on role
-            if (user.role === 'admin') {
-                setTimeout(() => window.location.href = 'admin.html', 1000);
-            } else if (user.role === 'seller') {
-                setTimeout(() => window.location.href = 'dashboard.html', 1000);
-            }
-        } else {
-            alert('Invalid email or password');
+        const user = await MilloDB.login(email, password);
+        currentUser = user;
+        updateUIForLoggedInUser();
+        closeAuthModal();
+        showNotification('Login successful!', 'success');
+        if (user.role === 'admin') {
+            setTimeout(() => window.location.href = 'admin.html', 1000);
+        } else if (user.role === 'seller') {
+            setTimeout(() => window.location.href = 'dashboard.html', 1000);
         }
     } catch (error) {
         console.error('Login error:', error);
-        alert('Login failed. Please try again.');
+        alert(error.message || 'Login failed. Please try again.');
     }
 }
 
-// Owner email — this account gets free signup and free product posting
-const OWNER_EMAIL = 'owner@millo.com';
-
-// Check whether a user object belongs to the owner
-function isOwnerAccount(user) {
-    return user && (user.email === OWNER_EMAIL || user.is_owner === true || user.role === 'admin');
-}
-
-// Signup function
 async function signup(email, password, fullName, role) {
     try {
-        // Check if email already exists
-        const existingUser = MilloDB.findOne('users', { email: email });
-        if (existingUser) {
-            alert('Email already exists. Please use a different email or login.');
-            return;
-        }
-        
-        // Determine if this is the owner signing up (free, no payment required)
-        const isOwner = email.toLowerCase() === OWNER_EMAIL.toLowerCase();
-
-        // Create new user
-        const newUser = {
-            email: email,
-            password: password,
-            full_name: fullName,
-            role: isOwner ? 'admin' : role,   // Owner always gets admin role
-            status: 'active',
-            is_owner: isOwner,                 // Flag for free posting privilege
-            payment_exempt: isOwner            // Skip $25 CAD fee
-        };
-        
-        // Save to localStorage database
-        const createdUser = MilloDB.create('users', newUser);
-        
-        currentUser = createdUser;
-        localStorage.setItem('milloUser', JSON.stringify(createdUser));
+        const user = await MilloDB.signup(email, password, fullName, role);
+        currentUser = user;
         updateUIForLoggedInUser();
         closeAuthModal();
-        
         showNotification('Account created successfully!', 'success');
-        
-        // Redirect based on role
-        if (isOwner) {
-            setTimeout(() => window.location.href = 'dashboard.html', 1000);
-        } else if (role === 'seller') {
+        if (user.role === 'admin' || user.role === 'seller') {
             setTimeout(() => window.location.href = 'dashboard.html', 1000);
         }
     } catch (error) {
         console.error('Signup error:', error);
-        alert('Signup failed. Please try again.');
+        alert(error.message || 'Signup failed. Please try again.');
     }
 }
 
-// Logout function
 function logout() {
+    MilloDB.logout();
     currentUser = null;
-    localStorage.removeItem('milloUser');
-    document.getElementById('authButtons').classList.remove('hidden');
-    document.getElementById('userMenu').classList.add('hidden');
+    const authButtons = document.getElementById('authButtons');
+    const userMenu = document.getElementById('userMenu');
+    if (authButtons) authButtons.classList.remove('hidden');
+    if (userMenu) userMenu.classList.add('hidden');
     showNotification('Logged out successfully', 'info');
-    
-    // Redirect to home if on protected page
     if (window.location.pathname.includes('dashboard') || window.location.pathname.includes('admin')) {
         setTimeout(() => window.location.href = 'index.html', 1000);
     }
 }
 
-// Toggle user dropdown
+// ── Dropdown ──────────────────────────────────────────────────────────────────
+
 function toggleUserDropdown() {
     const dropdown = document.getElementById('userDropdown');
-    dropdown.classList.toggle('hidden');
+    if (dropdown) dropdown.classList.toggle('hidden');
 }
 
-// Close dropdown when clicking outside
-document.addEventListener('click', function(event) {
+document.addEventListener('click', function (event) {
     const userMenu = document.getElementById('userMenu');
     const dropdown = document.getElementById('userDropdown');
-    
-    if (userMenu && !userMenu.contains(event.target)) {
-        if (dropdown) {
-            dropdown.classList.add('hidden');
-        }
+    if (userMenu && !userMenu.contains(event.target) && dropdown) {
+        dropdown.classList.add('hidden');
     }
 });
 
-// Show seller info modal
+// ── Seller modal ──────────────────────────────────────────────────────────────
+
 function showSellerInfo() {
-    document.getElementById('sellerModal').classList.remove('hidden');
+    const m = document.getElementById('sellerModal');
+    if (m) m.classList.remove('hidden');
 }
 
-// Close seller modal
 function closeSellerModal() {
-    document.getElementById('sellerModal').classList.add('hidden');
+    const m = document.getElementById('sellerModal');
+    if (m) m.classList.add('hidden');
 }
 
-// Utility function to show notifications
+// ── Notifications ─────────────────────────────────────────────────────────────
+
 function showNotification(message, type = 'info') {
-    // Create notification element
     const notification = document.createElement('div');
     notification.className = `fixed top-4 right-4 px-6 py-3 rounded-lg shadow-lg text-white z-50 ${
-        type === 'success' ? 'bg-green-500' : 
-        type === 'error' ? 'bg-red-500' : 
+        type === 'success' ? 'bg-green-500' :
+        type === 'error'   ? 'bg-red-500' :
+        type === 'warning' ? 'bg-yellow-500' :
         'bg-blue-500'
     }`;
     notification.textContent = message;
-    
     document.body.appendChild(notification);
-    
-    // Remove after 3 seconds
-    setTimeout(() => {
-        notification.remove();
-    }, 3000);
+    setTimeout(() => notification.remove(), 3500);
 }
 
-// Protect pages that require authentication
+// ── Route guard ───────────────────────────────────────────────────────────────
+
+/**
+ * requireAuth — redirect to index.html if user is not logged in.
+ * Accepts a comma-separated string of allowed roles, e.g. 'seller,admin'.
+ */
 function requireAuth(requiredRole = null) {
     const userData = localStorage.getItem('milloUser');
-    
     if (!userData) {
         window.location.href = 'index.html';
         return null;
     }
-    
     const user = JSON.parse(userData);
-    
-    if (requiredRole && user.role !== requiredRole) {
-        window.location.href = 'index.html';
-        return null;
+
+    if (requiredRole) {
+        // Allow multiple roles separated by comma
+        const allowed = requiredRole.split(',').map(r => r.trim());
+        if (!allowed.includes(user.role)) {
+            window.location.href = 'index.html';
+            return null;
+        }
     }
-    
     return user;
 }
