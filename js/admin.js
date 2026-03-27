@@ -27,6 +27,7 @@ async function loadAdminData() {
         await Promise.all([loadUsers(), loadProducts(), loadOrders(), loadSubscriptions()]);
         updateAnalytics();
         renderCommissionChart();
+        await loadOwnerEarnings(); // Populate withdrawals tab earnings on load
     } catch (error) {
         console.error('Error loading admin data:', error);
     }
@@ -265,6 +266,7 @@ async function loadOwnerEarnings() {
         set('totalEarnings', `$${earnings.available_balance.toFixed(2)}`);
         set('totalWithdrawn', `$${earnings.total_withdrawals.toFixed(2)}`);
         set('subscriptionRevenue', `$${earnings.subscription_revenue.toFixed(2)}`);
+        set('withdrawalCommission', `$${earnings.total_commissions.toFixed(2)}`);
         await loadWithdrawalHistory();
     } catch (error) {
         console.error('Error loading earnings:', error);

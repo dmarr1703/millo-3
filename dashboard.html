@@ -347,7 +347,6 @@
                         type="date" 
                         id="etransferDate" 
                         required 
-                        max="<?php echo date('Y-m-d'); ?>"
                         class="w-full px-4 py-3 rounded-lg border border-gray-700 bg-gray-800 text-gray-200 focus:outline-none focus:border-purple-600"
                     >
                     <p class="text-sm text-gray-400 mt-1">Select the date you sent the e-transfer</p>
@@ -435,5 +434,12 @@
     <script src="js/db.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/dashboard.js"></script>
+    <script>
+        // Set max date for e-transfer date field to today
+        document.addEventListener('DOMContentLoaded', function () {
+            const dateField = document.getElementById('etransferDate');
+            if (dateField) dateField.max = new Date().toISOString().split('T')[0];
+        });
+    </script>
 </body>
 </html>

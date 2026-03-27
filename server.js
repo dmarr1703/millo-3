@@ -441,7 +441,11 @@ app.get('/tables/:table', (req, res) => {
     const { table } = req.params;
     if (!db[table]) return res.status(404).json({ error: 'Table not found' });
     const { limit = 100, offset = 0 } = req.query;
-    const data = db[table];
+    let data = db[table];
+    // Never expose password hashes to the client
+    if (table === 'users') {
+        data = data.map(({ password, ...u }) => u);
+    }
     const start = parseInt(offset);
     const end = start + parseInt(limit);
     res.json({ data: data.slice(start, end), total: data.length, limit: parseInt(limit), offset: parseInt(offset) });
@@ -452,12 +456,19 @@ app.get('/tables/:table/:id', (req, res) => {
     if (!db[table]) return res.status(404).json({ error: 'Table not found' });
     const item = db[table].find(item => item.id === id);
     if (!item) return res.status(404).json({ error: 'Record not found' });
+    // Never expose password hashes
+    if (table === 'users') {
+        const { password, ...safeItem } = item;
+        return res.json(safeItem);
+    }
     res.json(item);
 });
 
 app.post('/tables/:table', (req, res) => {
     const { table } = req.params;
     if (!db[table]) return res.status(404).json({ error: 'Table not found' });
+    // Users must be created via /api/auth/signup
+    if (table === 'users') return res.status(403).json({ error: 'Use /api/auth/signup to create users' });
     const data = req.body;
     if (!data.id) {
         const prefix = table.replace(/s$/, '');
@@ -487,13 +498,21 @@ app.patch('/tables/:table/:id', (req, res) => {
     if (!db[table]) return res.status(404).json({ error: 'Table not found' });
     const index = db[table].findIndex(item => item.id === id);
     if (index === -1) return res.status(404).json({ error: 'Record not found' });
+    // Prevent overwriting password via generic PATCH
+    const updates = { ...req.body };
+    if (table === 'users') delete updates.password;
     db[table][index] = {
         ...db[table][index],
-        ...req.body,
+        ...updates,
         id,
         created_at: db[table][index].created_at
     };
     saveDatabase();
+    // Return safe user (no password)
+    if (table === 'users') {
+        const { password, ...safeItem } = db[table][index];
+        return res.json(safeItem);
+    }
     res.json(db[table][index]);
 });
 
