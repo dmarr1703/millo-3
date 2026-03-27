@@ -233,8 +233,10 @@ async function handleAddProduct(event) {
     try {
         const name = document.getElementById('productName').value.trim();
         const description = document.getElementById('productDescription').value.trim();
-        const price = parseFloat(document.getElementById('productPrice').value);
-        const stock = parseInt(document.getElementById('productStock').value);
+        const priceRaw = document.getElementById('productPrice').value.trim();
+        const stockRaw = document.getElementById('productStock').value.trim();
+        const price = parseFloat(priceRaw);
+        const stock = parseInt(stockRaw, 10);
         const category = document.getElementById('productCategory').value;
         const colorsStr = document.getElementById('productColors').value.trim();
         const colors = colorsStr.split(',').map(c => c.trim()).filter(Boolean);
@@ -242,8 +244,8 @@ async function handleAddProduct(event) {
 
         if (!name) { showNotification('❌ Product name is required', 'error'); return; }
         if (!description) { showNotification('❌ Product description is required', 'error'); return; }
-        if (!price || price <= 0) { showNotification('❌ Valid price is required', 'error'); return; }
-        if (isNaN(stock) || stock < 0) { showNotification('❌ Valid stock quantity is required', 'error'); return; }
+        if (!priceRaw || isNaN(price) || price <= 0) { showNotification('❌ Please enter a valid price greater than 0', 'error'); return; }
+        if (stockRaw === '' || isNaN(stock) || stock < 0) { showNotification('❌ Please enter a valid stock quantity (0 or more)', 'error'); return; }
         if (!category) { showNotification('❌ Category is required', 'error'); return; }
         if (colors.length === 0) { showNotification('❌ At least one color is required', 'error'); return; }
         if (!imageInput.files?.length) { showNotification('❌ Please select at least one product image', 'error'); return; }
@@ -329,15 +331,19 @@ async function handleEditProduct(event) {
         const id = document.getElementById('editProductId').value;
         const name = document.getElementById('editProductName').value.trim();
         const description = document.getElementById('editProductDescription').value.trim();
-        const price = parseFloat(document.getElementById('editProductPrice').value);
-        const stock = parseInt(document.getElementById('editProductStock').value);
+        const priceRaw = document.getElementById('editProductPrice').value.trim();
+        const stockRaw = document.getElementById('editProductStock').value.trim();
+        const price = parseFloat(priceRaw);
+        const stock = parseInt(stockRaw, 10);
         const category = document.getElementById('editProductCategory').value;
         const colors = document.getElementById('editProductColors').value.split(',').map(c => c.trim()).filter(Boolean);
 
-        if (!name || !description || !price || isNaN(stock) || !category || colors.length === 0) {
-            showNotification('❌ Please fill in all required fields', 'error');
-            return;
-        }
+        if (!name) { showNotification('❌ Product name is required', 'error'); return; }
+        if (!description) { showNotification('❌ Description is required', 'error'); return; }
+        if (!priceRaw || isNaN(price) || price <= 0) { showNotification('❌ Please enter a valid price greater than 0', 'error'); return; }
+        if (stockRaw === '' || isNaN(stock) || stock < 0) { showNotification('❌ Please enter a valid stock quantity (0 or more)', 'error'); return; }
+        if (!category) { showNotification('❌ Category is required', 'error'); return; }
+        if (colors.length === 0) { showNotification('❌ At least one color is required', 'error'); return; }
 
         await MilloDB.update('products', id, { name, description, price, stock, category, colors });
         closeEditProductModal();
