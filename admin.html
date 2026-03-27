@@ -344,7 +344,7 @@
                     </div>
                     <div class="text-center p-6 bg-purple-50 rounded-lg">
                         <i class="fas fa-percent text-3xl text-purple-600 mb-3"></i>
-                        <p class="text-3xl font-bold text-purple-600" id="totalCommission">$0.00</p>
+                        <p class="text-3xl font-bold text-purple-600" id="withdrawalCommission">$0.00</p>
                         <p class="text-gray-600 mt-2">Commission Earned</p>
                     </div>
                     <div class="text-center p-6 bg-orange-50 rounded-lg">
@@ -540,13 +540,5 @@
     <script src="js/db.js"></script>
     <script src="js/auth.js"></script>
     <script src="js/admin.js"></script>
-    <script>
-        // Load owner earnings on page load
-        document.addEventListener('DOMContentLoaded', function() {
-            if (admin) {
-                loadOwnerEarnings();
-            }
-        });
-    </script>
 </body>
 </html>

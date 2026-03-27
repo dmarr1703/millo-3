@@ -2,80 +2,59 @@
 let allProducts = [];
 let filteredProducts = [];
 
-// Load products on page load
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
     loadProducts();
     setupFilters();
-    
-    // Auto-refresh products every 5 seconds to catch new additions
-    setInterval(() => {
-        loadProducts();
-    }, 5000);
 });
 
-// Load products from localStorage database
+// Load products from server
 async function loadProducts() {
     try {
-        // Get products from localStorage database
-        const products = MilloDB.getAll('products');
-        
-        // Filter only active products with active subscriptions
-        const previousCount = allProducts.length;
+        const products = await MilloDB.getAll('products');
         allProducts = products.filter(p => p.status === 'active' && p.subscription_status === 'active');
         filteredProducts = [...allProducts];
-        
-        // Show notification if new products were added
-        if (previousCount > 0 && allProducts.length > previousCount) {
-            const newCount = allProducts.length - previousCount;
-            console.log(`✨ ${newCount} new product(s) added to the marketplace!`);
-        }
-        
         displayProducts();
     } catch (error) {
         console.error('Error loading products:', error);
+        const grid = document.getElementById('productsGrid');
+        if (grid) grid.innerHTML = '<div class="col-span-full text-center py-12 text-gray-400">Unable to load products. Make sure the server is running.</div>';
     }
 }
 
-// Display products in grid
 function displayProducts() {
     const grid = document.getElementById('productsGrid');
-    
     if (!grid) return;
-    
+
     if (filteredProducts.length === 0) {
         grid.innerHTML = '<div class="col-span-full text-center py-12 text-gray-400">No products found</div>';
         return;
     }
-    
-    // Get current user to check ownership
-    const currentUser = JSON.parse(localStorage.getItem('milloUser') || '{}');
-    
+
+    const currentUser = MilloDB.getCurrentUser() || {};
+
     grid.innerHTML = filteredProducts.map(product => {
         const isOwner = currentUser.id === product.seller_id;
-        const mainImage = product.images && product.images.length > 0 ? product.images[0] : product.image_url;
-        const imageCount = product.images && product.images.length > 1 ? product.images.length : 0;
-        
+        const mainImage = (product.images && product.images.length > 0) ? product.images[0] : product.image_url;
+        const imageCount = (product.images && product.images.length > 1) ? product.images.length : 0;
+
         return `
         <div class="product-card rounded-lg shadow-md overflow-hidden relative bg-gray-900">
             <div class="product-image-container relative">
-                <img src="${mainImage}" alt="${product.name}" class="product-image" loading="lazy" onerror="this.src='https://via.placeholder.com/400x400?text=No+Image'">
+                <img src="${mainImage}" alt="${product.name}" class="product-image" loading="lazy"
+                     onerror="this.src='https://via.placeholder.com/400x400?text=No+Image'">
                 <span class="absolute top-2 right-2 px-3 py-1 bg-yellow-500 text-black text-sm rounded-full font-semibold shadow-lg">
                     ${product.category}
                 </span>
                 ${imageCount > 0 ? `
                 <span class="absolute bottom-2 right-2 px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded-full font-semibold">
                     <i class="fas fa-images"></i> ${imageCount + 1}
-                </span>
-                ` : ''}
+                </span>` : ''}
                 ${isOwner ? `
-                <button 
-                    onclick="deleteProduct('${product.id}', event)" 
+                <button onclick="deleteProduct('${product.id}', event)"
                     class="absolute top-2 left-2 w-8 h-8 bg-red-600 text-white rounded-full hover:bg-red-700 transition flex items-center justify-center shadow-lg"
-                    title="Delete product"
-                >
+                    title="Delete product">
                     <i class="fas fa-times"></i>
-                </button>
-                ` : ''}
+                </button>` : ''}
             </div>
             <div class="p-4">
                 <h4 class="text-lg font-semibold text-white mb-2">${product.name}</h4>
@@ -83,8 +62,8 @@ function displayProducts() {
                 <div class="mb-3">
                     <span class="text-xs text-gray-500 mb-1 block">Colors:</span>
                     <div class="flex flex-wrap">
-                        ${product.colors.map(color => `
-                            <span class="color-dot border border-gray-700" style="background-color: ${getColorHex(color)};" title="${color}"></span>
+                        ${(product.colors || []).map(color => `
+                            <span class="color-dot border border-gray-700" style="background-color:${getColorHex(color)};" title="${color}"></span>
                         `).join('')}
                     </div>
                 </div>
@@ -94,131 +73,86 @@ function displayProducts() {
                         View Details
                     </button>
                 </div>
-                <div class="mt-2 text-xs text-gray-500">
-                    <i class="fas fa-box"></i> Stock: ${product.stock}
-                </div>
+                <div class="mt-2 text-xs text-gray-500"><i class="fas fa-box"></i> Stock: ${product.stock}</div>
             </div>
-        </div>
-        `;
+        </div>`;
     }).join('');
 }
 
-// Setup search and filter functionality
 function setupFilters() {
     const searchInput = document.getElementById('searchInput');
     const categoryFilter = document.getElementById('categoryFilter');
-    
-    if (searchInput) {
-        searchInput.addEventListener('input', applyFilters);
-    }
-    
-    if (categoryFilter) {
-        categoryFilter.addEventListener('change', applyFilters);
-    }
+    if (searchInput) searchInput.addEventListener('input', applyFilters);
+    if (categoryFilter) categoryFilter.addEventListener('change', applyFilters);
 }
 
-// Apply filters
 function applyFilters() {
     const searchTerm = document.getElementById('searchInput')?.value.toLowerCase() || '';
     const category = document.getElementById('categoryFilter')?.value || '';
-    
     filteredProducts = allProducts.filter(product => {
-        const matchesSearch = product.name.toLowerCase().includes(searchTerm) || 
-                            product.description.toLowerCase().includes(searchTerm);
+        const matchesSearch = product.name.toLowerCase().includes(searchTerm) ||
+                              product.description.toLowerCase().includes(searchTerm);
         const matchesCategory = !category || product.category === category;
-        
         return matchesSearch && matchesCategory;
     });
-    
     displayProducts();
 }
 
-// View product details
 function viewProduct(productId) {
     window.location.href = `product.html?id=${productId}`;
 }
 
-// Get color hex code from color name
-function getColorHex(colorName) {
-    const colorMap = {
-        'White': '#FFFFFF',
-        'Black': '#000000',
-        'Red': '#FF0000',
-        'Blue': '#0000FF',
-        'Navy': '#000080',
-        'Green': '#00FF00',
-        'Yellow': '#FFFF00',
-        'Purple': '#800080',
-        'Pink': '#FFC0CB',
-        'Orange': '#FFA500',
-        'Brown': '#8B4513',
-        'Gray': '#808080',
-        'Grey': '#808080',
-        'Beige': '#F5F5DC',
-        'Teal': '#008080',
-        'Turquoise': '#40E0D0',
-        'Coral': '#FF7F50',
-        'Mint': '#98FF98'
-    };
-    
-    return colorMap[colorName] || '#CCCCCC';
-}
-
-// Get product by ID
-function getProductById(productId) {
+async function getProductById(productId) {
     try {
-        // Get product from localStorage database
-        return MilloDB.getById('products', productId);
+        return await MilloDB.getById('products', productId);
     } catch (error) {
         console.error('Error fetching product:', error);
         return null;
     }
 }
 
-// Delete product (only for product owner)
 async function deleteProduct(productId, event) {
-    event.stopPropagation();
-    event.preventDefault();
-    
-    const currentUser = JSON.parse(localStorage.getItem('milloUser') || '{}');
-    
-    if (!currentUser.id) {
-        alert('You must be logged in to delete products');
-        return;
-    }
-    
-    const product = MilloDB.getById('products', productId);
-    
-    if (!product) {
-        alert('Product not found');
-        return;
-    }
-    
+    if (event) { event.stopPropagation(); event.preventDefault(); }
+
+    const currentUser = MilloDB.getCurrentUser();
+    if (!currentUser) { alert('You must be logged in to delete products'); return; }
+
+    const product = await MilloDB.getById('products', productId);
+    if (!product) { alert('Product not found'); return; }
+
     if (product.seller_id !== currentUser.id && currentUser.role !== 'admin') {
         alert('You can only delete your own products');
         return;
     }
-    
-    if (confirm(`Are you sure you want to delete "${product.name}"? This action cannot be undone.`)) {
+
+    if (!confirm(`Are you sure you want to delete "${product.name}"? This cannot be undone.`)) return;
+
+    try {
+        await MilloDB.delete('products', productId);
+
+        // Cancel associated subscription
         try {
-            // Delete the product
-            MilloDB.delete('products', productId);
-            
-            // Delete associated subscription
-            const subscriptions = MilloDB.getAll('subscriptions');
-            const productSubscription = subscriptions.find(s => s.product_id === productId);
-            if (productSubscription) {
-                MilloDB.delete('subscriptions', productSubscription.id);
+            const subs = await MilloDB.find('subscriptions', { product_id: productId });
+            for (const sub of subs) {
+                await MilloDB.update('subscriptions', sub.id, { status: 'cancelled' });
             }
-            
-            // Show success notification
-            showNotification('Product deleted successfully', 'success');
-            
-            // Reload products
-            await loadProducts();
-        } catch (error) {
-            console.error('Error deleting product:', error);
-            alert('Failed to delete product. Please try again.');
-        }
+        } catch (_) { /* subscriptions are optional */ }
+
+        showNotification('Product deleted successfully', 'success');
+        await loadProducts();
+    } catch (error) {
+        console.error('Error deleting product:', error);
+        alert('Failed to delete product. Please try again.');
     }
+}
+
+function getColorHex(colorName) {
+    const colorMap = {
+        'White': '#FFFFFF', 'Black': '#000000', 'Red': '#FF0000', 'Blue': '#0000FF',
+        'Navy': '#000080', 'Green': '#228B22', 'Yellow': '#FFD700', 'Purple': '#800080',
+        'Pink': '#FFC0CB', 'Orange': '#FFA500', 'Brown': '#8B4513', 'Gray': '#808080',
+        'Grey': '#808080', 'Beige': '#F5F5DC', 'Teal': '#008080', 'Turquoise': '#40E0D0',
+        'Coral': '#FF7F50', 'Mint': '#98FF98'
+    };
+    return colorMap[colorName] || '#CCCCCC';
 }

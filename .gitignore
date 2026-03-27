@@ -4,7 +4,7 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# Environment variables - NEVER commit these!
+# Environment variables — NEVER commit these!
 .env
 .env.local
 .env.development.local
@@ -12,14 +12,13 @@ yarn-error.log*
 .env.production.local
 *.env
 
-# Sensitive key documentation (user reference only)
-STRIPE_KEYS.md
+# Database file — contains real user data, never commit
+millo-database.json
+millo-backup-*.json
 
-# Sensitive key documentation (user reference only)
-STRIPE_KEYS.md
-
-# Sensitive key documentation (user reference only)
-STRIPE_KEYS.md
+# Uploaded product images
+uploads/*
+!uploads/.gitkeep
 
 # Build outputs
 dist/
@@ -35,8 +34,7 @@ Thumbs.db
 *.swp
 *.swo
 *~
-millo-database.json
 
-# Uploads directory - product images and PDFs
-uploads/*
-!uploads/.gitkeep
+# Sensitive key documentation
+STRIPE_KEYS.md
+CREDENTIALS.md
