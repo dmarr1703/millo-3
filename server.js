@@ -32,16 +32,25 @@ const storage = multer.diskStorage({
 
 const upload = multer({
     storage: storage,
+    limits: {
+        fileSize: 10 * 1024 * 1024, // 10 MB per file
+        files: 20                    // max 20 files per request
+    },
     fileFilter: function (req, file, cb) {
-        if (file.mimetype === 'application/pdf' || file.mimetype.startsWith('image/')) {
+        const allowed = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+        if (allowed.includes(file.mimetype)) {
             cb(null, true);
         } else {
-            cb(new Error('Only PDF and image files are allowed!'), false);
+            cb(new Error(`Invalid file type: ${file.mimetype}. Only images (JPEG, PNG, GIF, WebP) and PDFs are allowed.`), false);
         }
     }
 });
 
-const multipleUpload = upload.array('images');
+// Support both 'images' and 'image' field names to avoid UNEXPECTED_FIELD errors
+const multipleUpload = upload.fields([
+    { name: 'images', maxCount: 20 },
+    { name: 'image',  maxCount: 20 }
+]);
 
 // Stripe configuration
 const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY || '';
@@ -412,21 +421,34 @@ app.post('/api/upload-files', (req, res) => {
     multipleUpload(req, res, function (err) {
         if (err) {
             if (err instanceof multer.MulterError) {
-                return res.status(400).json({ error: `Upload error: ${err.message}` });
+                // Give a friendly message for the most common multer errors
+                let msg = err.message;
+                if (err.code === 'LIMIT_FILE_SIZE')  msg = 'File too large — maximum size is 10 MB per file.';
+                if (err.code === 'LIMIT_FILE_COUNT') msg = 'Too many files — maximum is 20 files per request.';
+                if (err.code === 'LIMIT_UNEXPECTED_FILE') msg = 'Unexpected file field. Use the field name "images".';
+                return res.status(400).json({ error: msg });
             }
             return res.status(400).json({ error: err.message || 'Upload failed' });
         }
-        if (!req.files || req.files.length === 0) {
+
+        // req.files is an object when using upload.fields(): { images: [...], image: [...] }
+        const allFiles = [
+            ...(req.files?.images || []),
+            ...(req.files?.image  || [])
+        ];
+
+        if (allFiles.length === 0) {
             return res.status(400).json({ error: 'No files uploaded' });
         }
-        const fileUrls = req.files.map(file => ({
+
+        const fileUrls = allFiles.map(file => ({
             fileUrl: `/uploads/${file.filename}`,
             filename: file.filename,
             originalName: file.originalname,
             mimetype: file.mimetype,
             size: file.size
         }));
-        res.json({ success: true, files: fileUrls, count: req.files.length });
+        res.json({ success: true, files: fileUrls, count: allFiles.length });
     });
 });
 

@@ -262,7 +262,12 @@ async function handleAddProduct(event) {
         const formData = new FormData();
         for (const file of imageInput.files) formData.append('images', file);
 
-        const uploadRes = await fetch('/api/upload-files', { method: 'POST', body: formData });
+        // Pass auth headers for upload (but NOT Content-Type — browser sets multipart boundary)
+        const uploadRes = await fetch('/api/upload-files', {
+            method: 'POST',
+            headers: MilloDB.authHeadersForUpload(),
+            body: formData
+        });
         if (!uploadRes.ok) { const e = await uploadRes.json(); throw new Error(e.error || 'Upload failed'); }
         const uploadData = await uploadRes.json();
         if (!uploadData.files?.length) throw new Error('No files uploaded');
