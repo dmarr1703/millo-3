@@ -22,7 +22,22 @@ const MilloDB = {
     authHeaders() {
         const token = this.getToken();
         const headers = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
+        // Only add Authorization header when a real token exists
+        // Sending 'Bearer null' or 'Bearer undefined' causes
+        // DOMException: "The string did not match the expected pattern"
+        if (token && token !== 'null' && token !== 'undefined') {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
+        return headers;
+    },
+
+    authHeadersForUpload() {
+        const token = this.getToken();
+        const headers = {};
+        // Only add Authorization header when a real token exists
+        if (token && token !== 'null' && token !== 'undefined') {
+            headers['Authorization'] = `Bearer ${token}`;
+        }
         return headers;
     },
 
